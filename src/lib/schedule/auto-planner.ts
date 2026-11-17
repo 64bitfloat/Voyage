@@ -79,13 +79,9 @@ function fitWithinBusinessHours(
   if (slotTag) {
     const wStart = hhmmToMin(slotTag.windowStart);
     const wEnd = hhmmToMin(slotTag.windowEnd);
-    // 枠の開始より少し早く着いた場合（75分以内の待ち）は枠開始時刻に合わせる
+    // 枠の開始時刻より前に到着できる場合は、枠開始時刻（wStart）にスケジュールする
     if (startMin < wStart) {
-      if (wStart - startMin <= 75) {
-        startMin = wStart;
-      } else {
-        return null;
-      }
+      startMin = wStart;
     }
     // 枠の終了時刻を30分以上過ぎてしまう場合はこの枠には入らない
     if (startMin > wEnd + 30) {
@@ -246,14 +242,15 @@ export async function autoBuildEfficientItinerary(
             const wStart = hhmmToMin(st.windowStart);
             const wEnd = hhmmToMin(st.windowEnd);
             const inIdealWindow = fit.startMin >= wStart && fit.startMin <= wEnd;
-            const waitPenalty = Math.max(0, fit.startMin - arrivalMin) * 0.8;
+            const waitMin = Math.max(0, fit.startMin - arrivalMin);
 
-            // 枠の時間帯にぴったり入る候補を強く優遇し、移動ロス・待ち時間が少ない1軒を選抜する
+            // 近い時間帯の枠（朝→昼→夕の順）から順番に選ばれるよう waitMin ペナルティを付与し、
+            // 同じ枠内では優先度が高く移動ロスが少ない1軒を選抜する
             const score =
               spotPriorityScore(cand) * 2 +
-              (inIdealWindow ? 95 : 20) -
+              (inIdealWindow ? 120 : 20) -
               travelMin * 1.5 -
-              waitPenalty;
+              waitMin * 0.4;
 
             if (score > bestScore) {
               bestScore = score;
