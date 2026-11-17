@@ -26,6 +26,7 @@ import {
   type ChoiceSlotTag,
 } from "@/lib/geo/business-hours";
 import { computeDaySchedule, spotsOfDay } from "@/lib/schedule/compute";
+import TimeSelect from "./TimeSelect";
 
 interface SpotEditorModalProps {
   days: DayRow[];
@@ -168,23 +169,23 @@ export default function SpotEditorModal({
   const dayDate = selectedDay.date;
   const baseDefaultDate = dayDate ?? todayStr;
 
-  // 行きたい時刻 / 予約時刻（HH:MM）
-  const [resTimeHHMM, setResTimeHHMM] = useState<string>(
+  // 行きたい時刻 / 予約時刻（HH:MM または null=未定）
+  const [resTimeHHMM, setResTimeHHMM] = useState<string | null>(
     initial.reservation_time ? toTokyoHHMM(initial.reservation_time) : "12:00",
   );
   const [checkInDate, setCheckInDate] = useState<string>(
     initial.check_in ? toTokyoDate(new Date(initial.check_in)) : baseDefaultDate,
   );
-  const [checkInHHMM, setCheckInHHMM] = useState<string>(
-    initial.check_in ? toTokyoHHMM(initial.check_in) : "15:00",
+  const [checkInHHMM, setCheckInHHMM] = useState<string | null>(
+    initial.check_in ? toTokyoHHMM(initial.check_in) : isNew ? "15:00" : null,
   );
   const [checkOutDate, setCheckOutDate] = useState<string>(
     initial.check_out
       ? toTokyoDate(new Date(initial.check_out))
       : addDays(baseDefaultDate, 1),
   );
-  const [checkOutHHMM, setCheckOutHHMM] = useState<string>(
-    initial.check_out ? toTokyoHHMM(initial.check_out) : "10:00",
+  const [checkOutHHMM, setCheckOutHHMM] = useState<string | null>(
+    initial.check_out ? toTokyoHHMM(initial.check_out) : isNew ? "10:00" : null,
   );
   const [hasCheckInOut, setHasCheckInOut] = useState<boolean>(
     initial.category === "lodging" || initial.check_in !== null || initial.check_out !== null,
@@ -695,22 +696,22 @@ export default function SpotEditorModal({
                     >
                       <span className="font-bold text-purple-950 truncate">{st.label}</span>
                       <div className="flex items-center gap-1 shrink-0 font-mono">
-                        <input
-                          type="time"
+                        <TimeSelect
+                          allowUndecided={false}
                           value={st.windowStart}
-                          onChange={(e) =>
-                            updateSlotWindow(st.id, "windowStart", e.target.value)
+                          onChange={(val) =>
+                            updateSlotWindow(st.id, "windowStart", val ?? "11:30")
                           }
-                          className="px-1.5 py-0.5 rounded border border-purple-200 text-xs"
+                          className="border-purple-200"
                         />
                         <span>〜</span>
-                        <input
-                          type="time"
+                        <TimeSelect
+                          allowUndecided={false}
                           value={st.windowEnd}
-                          onChange={(e) =>
-                            updateSlotWindow(st.id, "windowEnd", e.target.value)
+                          onChange={(val) =>
+                            updateSlotWindow(st.id, "windowEnd", val ?? "13:30")
                           }
-                          className="px-1.5 py-0.5 rounded border border-purple-200 text-xs"
+                          className="border-purple-200"
                         />
                       </div>
                     </div>
@@ -719,26 +720,26 @@ export default function SpotEditorModal({
               )}
 
               {/* 自由な枠タグを追加 */}
-              <div className="flex items-center gap-1.5 pt-1">
+              <div className="flex items-center flex-wrap gap-1.5 pt-1">
                 <input
                   type="text"
                   value={customSlotName}
                   onChange={(e) => setCustomSlotName(e.target.value)}
                   placeholder="自由な枠名 (例: 1日目おやつ)"
-                  className="flex-1 px-2.5 py-1 rounded-lg border border-purple-200 bg-white text-xs"
+                  className="flex-1 min-w-[130px] px-2.5 py-1 rounded-lg border border-purple-200 bg-white text-xs"
                 />
-                <input
-                  type="time"
+                <TimeSelect
+                  allowUndecided={false}
                   value={customSlotStart}
-                  onChange={(e) => setCustomSlotStart(e.target.value)}
-                  className="w-20 px-1.5 py-1 rounded-lg border border-purple-200 bg-white text-xs font-mono"
+                  onChange={(val) => setCustomSlotStart(val ?? "12:00")}
+                  className="border-purple-200"
                 />
                 <span className="text-xs text-purple-700">〜</span>
-                <input
-                  type="time"
+                <TimeSelect
+                  allowUndecided={false}
                   value={customSlotEnd}
-                  onChange={(e) => setCustomSlotEnd(e.target.value)}
-                  className="w-20 px-1.5 py-1 rounded-lg border border-purple-200 bg-white text-xs font-mono"
+                  onChange={(val) => setCustomSlotEnd(val ?? "14:00")}
+                  className="border-purple-200"
                 />
                 <button
                   type="button"
@@ -788,37 +789,37 @@ export default function SpotEditorModal({
                     <div className="text-[11px] font-bold text-purple-900">
                       ① 施設側の規定時間（任意・入力すると予定時刻が範囲外のとき警告します）
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
                         <label className="block text-[10px] text-purple-700 mb-0.5">
                           最速チェックイン可能（〜から）
                         </label>
-                        <input
-                          type="time"
-                          value={bhRule.policyCheckIn ?? ""}
-                          onChange={(e) =>
+                        <TimeSelect
+                          value={bhRule.policyCheckIn}
+                          defaultHour="14"
+                          onChange={(val) =>
                             setBhRule((prev) => ({
                               ...prev,
-                              policyCheckIn: e.target.value || null,
+                              policyCheckIn: val,
                             }))
                           }
-                          className="w-full px-2 py-1 rounded border border-purple-200 bg-white text-xs font-mono"
+                          className="w-full justify-between border-purple-200"
                         />
                       </div>
                       <div>
                         <label className="block text-[10px] text-purple-700 mb-0.5">
                           最終チェックアウト期限（〜まで）
                         </label>
-                        <input
-                          type="time"
-                          value={bhRule.policyCheckOut ?? ""}
-                          onChange={(e) =>
+                        <TimeSelect
+                          value={bhRule.policyCheckOut}
+                          defaultHour="11"
+                          onChange={(val) =>
                             setBhRule((prev) => ({
                               ...prev,
-                              policyCheckOut: e.target.value || null,
+                              policyCheckOut: val,
                             }))
                           }
-                          className="w-full px-2 py-1 rounded border border-purple-200 bg-white text-xs font-mono"
+                          className="w-full justify-between border-purple-200"
                         />
                       </div>
                     </div>
@@ -845,13 +846,13 @@ export default function SpotEditorModal({
                                 setCheckOutDate(addDays(val, 1));
                               }
                             }}
-                            className="flex-1 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs"
+                            className="flex-1 min-w-0 px-2 py-1.5 rounded-xl border border-purple-200 bg-white text-xs"
                           />
-                          <input
-                            type="time"
+                          <TimeSelect
                             value={checkInHHMM}
-                            onChange={(e) => setCheckInHHMM(e.target.value)}
-                            className="w-24 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs font-mono font-bold"
+                            defaultHour="15"
+                            onChange={setCheckInHHMM}
+                            className="border-purple-200 shrink-0"
                           />
                         </div>
                       </div>
@@ -859,19 +860,19 @@ export default function SpotEditorModal({
                         <label className="block text-[11px] font-medium text-purple-800 mb-1">
                           予定チェックアウト（翌日の出発時刻）
                         </label>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 items-center">
                           <input
                             type="date"
                             min={checkInDate || undefined}
                             value={checkOutDate}
                             onChange={(e) => setCheckOutDate(e.target.value)}
-                            className="flex-1 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs"
+                            className="flex-1 min-w-0 px-2 py-1.5 rounded-xl border border-purple-200 bg-white text-xs"
                           />
-                          <input
-                            type="time"
+                          <TimeSelect
                             value={checkOutHHMM}
-                            onChange={(e) => setCheckOutHHMM(e.target.value)}
-                            className="w-24 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs font-mono font-bold"
+                            defaultHour="10"
+                            onChange={setCheckOutHHMM}
+                            className="border-purple-200 shrink-0"
                           />
                         </div>
                       </div>
@@ -926,12 +927,19 @@ export default function SpotEditorModal({
                       時間を指定する
                     </label>
                   </div>
-                  <input
-                    type="time"
+                  <TimeSelect
                     disabled={!spot.is_fixed}
-                    value={resTimeHHMM}
-                    onChange={(e) => setResTimeHHMM(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-indigo-200 bg-white font-mono disabled:bg-neutral-100 disabled:text-neutral-400"
+                    value={spot.is_fixed ? resTimeHHMM : null}
+                    defaultHour="12"
+                    onChange={(val) => {
+                      if (val === null) {
+                        setSpot((s) => ({ ...s, is_fixed: false }));
+                        setResTimeHHMM(null);
+                      } else {
+                        setResTimeHHMM(val);
+                      }
+                    }}
+                    className="w-full justify-between border-indigo-200"
                   />
                 </div>
 
@@ -997,27 +1005,23 @@ export default function SpotEditorModal({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[11px] text-amber-900 mb-0.5">開店時刻</label>
-                  <input
-                    type="time"
-                    value={bhRule.open ?? ""}
-                    onChange={(e) =>
-                      setBhRule((prev) => ({ ...prev, open: e.target.value || null }))
-                    }
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs font-mono"
+                  <TimeSelect
+                    value={bhRule.open}
+                    defaultHour="10"
+                    onChange={(val) => setBhRule((prev) => ({ ...prev, open: val }))}
+                    className="w-full justify-between border-amber-200"
                   />
                 </div>
                 <div>
                   <label className="block text-[11px] text-amber-900 mb-0.5">閉店時刻</label>
-                  <input
-                    type="time"
-                    value={bhRule.close ?? ""}
-                    onChange={(e) =>
-                      setBhRule((prev) => ({ ...prev, close: e.target.value || null }))
-                    }
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs font-mono"
+                  <TimeSelect
+                    value={bhRule.close}
+                    defaultHour="18"
+                    onChange={(val) => setBhRule((prev) => ({ ...prev, close: val }))}
+                    className="w-full justify-between border-amber-200"
                   />
                 </div>
               </div>

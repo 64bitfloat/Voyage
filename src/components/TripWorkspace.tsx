@@ -68,6 +68,7 @@ import PrepAndDishesPanel from "./PrepAndDishesPanel";
 import MuseExportModal from "./MuseExportModal";
 import PasscodeGateModal from "./PasscodeGateModal";
 import ShareTripModal from "./ShareTripModal";
+import TimeSelect from "./TimeSelect";
 
 const TripMap = dynamic(() => import("./TripMap"), {
   ssr: false,
@@ -1010,25 +1011,22 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                 />
               </div>
 
-              <div className="sm:col-span-3 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <div className="sm:col-span-4 flex items-center gap-1.5">
                 <span className="text-[11px] text-slate-500 shrink-0">出発</span>
-                <input
-                  type="time"
+                <TimeSelect
                   value={
                     activeDay.departure_time ??
                     (daySchedule?.checkoutSpot?.check_out
                       ? toTokyoHHMM(daySchedule.checkoutSpot.check_out)
-                      : "")
+                      : null)
                   }
-                  onChange={(e) =>
-                    handleSaveDayPatch({ departure_time: e.target.value || null })
-                  }
-                  className="w-full px-2 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold"
+                  defaultHour="08"
+                  onChange={(val) => handleSaveDayPatch({ departure_time: val })}
+                  className="flex-1 justify-between"
                 />
               </div>
 
-              <div className="sm:col-span-6 flex items-center gap-1.5">
+              <div className="sm:col-span-5 flex items-center gap-1.5">
                 <input
                   type="text"
                   value={
