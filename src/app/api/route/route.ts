@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { LatSchema, LngSchema } from "@/lib/export/schema";
 import { estimateRouteFallback, routeViaValhallaDirect } from "@/lib/routing/osrm";
-import { parseBody } from "@/lib/server";
+import { getClientIp, jsonError, parseBody } from "@/lib/server";
+import { checkRateLimit } from "@/lib/server/passcode";
 
 const RouteRequestSchema = z.object({
-  from: z.object({ lat: z.number(), lng: z.number() }),
-  to: z.object({ lat: z.number(), lng: z.number() }),
+  from: z.object({ lat: LatSchema, lng: LngSchema }),
+  to: z.object({ lat: LatSchema, lng: LngSchema }),
   mode: z.enum(["car", "walk", "train"]),
   avoidTolls: z.boolean().optional().default(false),
 });
@@ -17,6 +19,9 @@ const RouteRequestSchema = z.object({
  * 3. 失敗時は直線距離×道路係数の概算を返す
  */
 export async function POST(req: Request) {
+  if (!checkRateLimit(`route:${getClientIp(req)}`, 60, 60_000)) {
+    return jsonError(429, "ルート計算のリクエストが多すぎます。少し待ってから再度お試しください");
+  }
   const parsed = await parseBody(req, RouteRequestSchema);
   if (!parsed.ok) return parsed.res;
 
@@ -29,6 +34,7 @@ export async function POST(req: Request) {
         mode === "walk" ? "WALK" : mode === "train" ? "TRANSIT" : "DRIVE";
       const res = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
         method: "POST",
+        signal: AbortSignal.timeout(8000),
         headers: {
           "Content-Type": "application/json",
           "X-Goog-Api-Key": gmapsKey,

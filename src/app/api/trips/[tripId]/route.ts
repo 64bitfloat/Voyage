@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { UpdateTripInput } from "@/lib/model/types";
-import { getStore, isUuid, jsonError, parseBody, serverError } from "@/lib/server";
+import { getStore, isUuid, jsonError, parseBody, requireTripWriteAccess, serverError } from "@/lib/server";
 
 type Ctx = { params: Promise<{ tripId: string }> };
 
@@ -19,6 +19,8 @@ export async function GET(_req: Request, { params }: Ctx) {
 export async function PATCH(req: Request, { params }: Ctx) {
   const { tripId } = await params;
   if (!isUuid(tripId)) return jsonError(404, "旅行が見つかりません");
+  const denied = await requireTripWriteAccess(req, tripId);
+  if (denied) return denied;
   const body = await parseBody(req, UpdateTripInput);
   if (!body.ok) return body.res;
   try {

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import type { z } from "zod";
 import { IdSchema } from "../export/schema";
 import { MemoryStore } from "./memory-store";
+import { getUnlockCookieName, verifyUnlockToken } from "./passcode";
 import type { TripStore } from "./store";
 import { SupabaseStore } from "./supabase-store";
 
@@ -50,6 +51,41 @@ export async function parseBody<T extends z.ZodType>(
   const r = schema.safeParse(body);
   if (!r.success) return { ok: false, res: jsonError(422, "入力内容に誤りがあります", r.error.issues) };
   return { ok: true, data: r.data };
+}
+
+export function getClientIp(req: Request): string {
+  const fwd = req.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0].trim();
+  return req.headers.get("x-real-ip")?.trim() || "unknown";
+}
+
+function readCookie(req: Request, name: string): string | null {
+  const raw = req.headers.get("cookie");
+  if (!raw) return null;
+  for (const part of raw.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx < 0) continue;
+    const k = part.slice(0, idx).trim();
+    if (k === name) return decodeURIComponent(part.slice(idx + 1).trim());
+  }
+  return null;
+}
+
+/**
+ * 合言葉ロックが設定されている旅行への書き込みAPIアクセスをサーバー側で検証する。
+ * 合言葉未設定の旅行はそのまま許可し、既存のログイン不要UXを維持する。
+ */
+export async function requireTripWriteAccess(
+  req: Request,
+  tripId: string,
+): Promise<NextResponse | null> {
+  const doc = await getStore().getTripDoc(tripId);
+  if (!doc || !doc.trip.has_passcode) return null;
+  const token = readCookie(req, getUnlockCookieName(tripId));
+  if (!verifyUnlockToken(tripId, token)) {
+    return jsonError(403, "合言葉の認証が必要です");
+  }
+  return null;
 }
 
 export function serverError(e: unknown) {

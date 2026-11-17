@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { DayRowSchema, UpsertDayInput, type DayRow } from "@/lib/model/types";
-import { getStore, isUuid, jsonError, parseBody, serverError } from "@/lib/server";
+import { getStore, isUuid, jsonError, parseBody, requireTripWriteAccess, serverError } from "@/lib/server";
 
 type Ctx = { params: Promise<{ tripId: string; dayIndex: string }> };
 
@@ -10,6 +10,8 @@ export async function PUT(req: Request, { params }: Ctx) {
   const dayIndex = Number(raw);
   if (!isUuid(tripId) || !Number.isInteger(dayIndex) || dayIndex < 0 || dayIndex > 60)
     return jsonError(404, "日程が見つかりません");
+  const denied = await requireTripWriteAccess(req, tripId);
+  if (denied) return denied;
   const body = await parseBody(req, UpsertDayInput);
   if (!body.ok) return body.res;
   try {

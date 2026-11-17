@@ -97,7 +97,10 @@ export const SpotSchema = z.object({
   address: z.string().nullable(),
   lat: LatSchema.nullable(),
   lng: LngSchema.nullable(),
-  place_url: z.url().nullable(),
+  place_url: z
+    .url()
+    .refine((u) => /^https?:\/\//i.test(u), "http/https URLのみ指定できます")
+    .nullable(),
   arrival_planned: DateTimeSchema.nullable(),
   departure_planned: DateTimeSchema.nullable(),
   stay_minutes: z.number().int().nonnegative(),

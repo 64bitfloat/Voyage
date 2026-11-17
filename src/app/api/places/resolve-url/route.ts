@@ -1,3 +1,5 @@
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
@@ -9,8 +11,103 @@ import type { SpotRow } from "@/lib/model/types";
 import { jsonError, parseBody } from "@/lib/server";
 
 const InputSchema = z.object({
-  url: z.string().trim().min(1),
+  url: z.string().trim().min(1).max(2048),
 });
+
+const ALLOWED_GOOGLE_HOSTS = new Set([
+  "maps.app.goo.gl",
+  "goo.gl",
+  "maps.google.com",
+  "maps.google.co.jp",
+  "www.google.com",
+  "www.google.co.jp",
+  "google.com",
+  "google.co.jp",
+  "share.google",
+  "g.co",
+]);
+
+function isPrivateOrReservedIp(ip: string): boolean {
+  const clean = ip.replace(/^::ffff:/i, "");
+  const parts = clean.split(".").map(Number);
+  if (parts.length === 4 && parts.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
+    const [a, b] = parts;
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    return false;
+  }
+  const lower = ip.toLowerCase();
+  return (
+    lower === "::1" ||
+    lower === "::" ||
+    lower.startsWith("fc") ||
+    lower.startsWith("fd") ||
+    lower.startsWith("fe80:")
+  );
+}
+
+async function isSafePublicHttpUrl(rawUrl: string, requireGoogleHost: boolean): Promise<URL | null> {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+  const host = u.hostname.toLowerCase();
+  if (!host || host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) {
+    return null;
+  }
+  if (requireGoogleHost && !ALLOWED_GOOGLE_HOSTS.has(host)) {
+    return null;
+  }
+  if (isIP(host)) {
+    return isPrivateOrReservedIp(host) ? null : u;
+  }
+  try {
+    const records = await lookup(host, { all: true });
+    if (records.length === 0 || records.some((r) => isPrivateOrReservedIp(r.address))) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return u;
+}
+
+async function safeFollowGoogleRedirects(initialUrl: string): Promise<string> {
+  let current = initialUrl;
+  const firstSafe = await isSafePublicHttpUrl(current, true);
+  if (!firstSafe) return initialUrl;
+
+  for (let hop = 0; hop < 5; hop++) {
+    const res = await fetch(current, {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(5000),
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      },
+    });
+    await res.body?.cancel().catch(() => {});
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get("location");
+      if (!loc) break;
+      const nextUrl = new URL(loc, current).toString();
+      const nextSafe = await isSafePublicHttpUrl(nextUrl, false);
+      if (!nextSafe) break;
+      current = nextSafe.toString();
+      continue;
+    }
+    if (res.url) current = res.url;
+    break;
+  }
+  return current;
+}
 
 interface ResolvedPlace {
   name: string;
@@ -127,6 +224,7 @@ async function fetchWebBusinessHoursAndAddress(
     const q = `${placeName} 営業時間 定休日`;
     const url = `https://search.yahoo.co.jp/search?p=${encodeURIComponent(q)}`;
     const res = await fetch(url, {
+      signal: AbortSignal.timeout(5000),
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -167,20 +265,16 @@ export async function POST(req: Request) {
     return jsonError(422, "有効なURLが見つかりませんでした");
   }
   const inputUrl = urlMatch[0];
+  const initialSafe = await isSafePublicHttpUrl(inputUrl, true);
+  if (!initialSafe) {
+    return jsonError(422, "Google マップの共有URL（maps.app.goo.gl / google.com/maps 等）を入力してください");
+  }
   const prefixText =
     rawInput.slice(0, urlMatch.index).trim().split(/\r?\n/)[0]?.trim() || null;
 
   let finalUrl = inputUrl;
   try {
-    const res = await fetch(inputUrl, {
-      method: "GET",
-      redirect: "follow",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-      },
-    });
-    if (res.url) finalUrl = res.url;
+    finalUrl = await safeFollowGoogleRedirects(inputUrl);
   } catch {
     // ignore redirect errors
   }
@@ -199,7 +293,10 @@ export async function POST(req: Request) {
         const searchUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&extratags=1&limit=3&accept-language=ja&countrycodes=jp&q=${encodeURIComponent(
           candidate,
         )}`;
-        const sRes = await fetch(searchUrl, { headers: NOMINATIM_HEADERS });
+        const sRes = await fetch(searchUrl, {
+          headers: NOMINATIM_HEADERS,
+          signal: AbortSignal.timeout(5000),
+        });
         if (sRes.ok) {
           const list = (await sRes.json()) as {
             name?: string;
@@ -225,7 +322,10 @@ export async function POST(req: Request) {
     // B. 座標がある場合は reverse geocode でも補完
     if (lat !== null && lng !== null && (!name || !address || !openingHoursRaw)) {
       const revUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&extratags=1&accept-language=ja&lat=${lat}&lon=${lng}`;
-      const rRes = await fetch(revUrl, { headers: NOMINATIM_HEADERS });
+      const rRes = await fetch(revUrl, {
+        headers: NOMINATIM_HEADERS,
+        signal: AbortSignal.timeout(5000),
+      });
       if (rRes.ok) {
         const r = (await rRes.json()) as {
           name?: string;

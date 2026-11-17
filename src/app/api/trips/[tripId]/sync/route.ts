@@ -11,19 +11,19 @@ import {
   TripRowSchema,
   type TripDoc,
 } from "@/lib/model/types";
-import { getStore, isUuid, jsonError, parseBody, serverError } from "@/lib/server";
+import { getStore, isUuid, jsonError, parseBody, requireTripWriteAccess, serverError } from "@/lib/server";
 
 type Ctx = { params: Promise<{ tripId: string }> };
 
 const FullTripDocSchema = z.object({
   trip: TripRowSchema,
-  days: z.array(DayRowSchema),
-  spots: z.array(SpotRowSchema),
-  participants: z.array(ParticipantRowSchema),
-  costs: z.array(CostRowSchema),
-  belongings: z.array(BelongingRowSchema),
-  dishes: z.array(DishRowSchema),
-  photos: z.array(PhotoRowSchema).default([]),
+  days: z.array(DayRowSchema).max(65),
+  spots: z.array(SpotRowSchema).max(500),
+  participants: z.array(ParticipantRowSchema).max(100),
+  costs: z.array(CostRowSchema).max(500),
+  belongings: z.array(BelongingRowSchema).max(500),
+  dishes: z.array(DishRowSchema).max(300),
+  photos: z.array(PhotoRowSchema).max(100).default([]),
 });
 
 /**
@@ -33,6 +33,8 @@ const FullTripDocSchema = z.object({
 export async function PUT(req: Request, { params }: Ctx) {
   const { tripId } = await params;
   if (!isUuid(tripId)) return jsonError(404, "旅行が見つかりません");
+  const denied = await requireTripWriteAccess(req, tripId);
+  if (denied) return denied;
   const body = await parseBody(req, FullTripDocSchema);
   if (!body.ok) return body.res;
   try {

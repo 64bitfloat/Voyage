@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { UpdateSpotInput } from "@/lib/model/types";
-import { getStore, isUuid, jsonError, parseBody, serverError } from "@/lib/server";
+import { getStore, isUuid, jsonError, parseBody, requireTripWriteAccess, serverError } from "@/lib/server";
 
 type Ctx = { params: Promise<{ tripId: string; spotId: string }> };
 
 export async function PATCH(req: Request, { params }: Ctx) {
   const { tripId, spotId } = await params;
   if (!isUuid(tripId) || !isUuid(spotId)) return jsonError(404, "スポットが見つかりません");
+  const denied = await requireTripWriteAccess(req, tripId);
+  if (denied) return denied;
   const body = await parseBody(req, UpdateSpotInput);
   if (!body.ok) return body.res;
   try {
@@ -18,9 +20,11 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Ctx) {
+export async function DELETE(req: Request, { params }: Ctx) {
   const { tripId, spotId } = await params;
   if (!isUuid(tripId) || !isUuid(spotId)) return jsonError(404, "スポットが見つかりません");
+  const denied = await requireTripWriteAccess(req, tripId);
+  if (denied) return denied;
   try {
     await getStore().deleteSpot(tripId, spotId);
     return NextResponse.json({ ok: true });

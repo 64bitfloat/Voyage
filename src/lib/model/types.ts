@@ -58,7 +58,10 @@ export const SpotRowSchema = z.object({
   address: z.string().max(500).nullable(),
   lat: LatSchema.nullable(),
   lng: LngSchema.nullable(),
-  place_url: z.url().nullable(),
+  place_url: z
+    .url()
+    .refine((u) => /^https?:\/\//i.test(u), "http/https URLのみ指定できます")
+    .nullable(),
   stay_minutes: z.number().int().min(0).max(24 * 60 * 7),
   reservation_time: DateTimeSchema.nullable(),
   is_fixed: z.boolean(),
