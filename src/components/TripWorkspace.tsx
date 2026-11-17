@@ -36,7 +36,8 @@ import {
   Menu,
   X,
   Home,
-  Link2,
+  Pin,
+  ArrowLeft,
 } from "lucide-react";
 import {
   addDays,
@@ -77,7 +78,7 @@ const TripMap = dynamic(() => import("./TripMap"), {
   ),
 });
 
-type MainTab = "itinerary" | "map" | "costs" | "prep" | "members";
+type MainTab = "itinerary" | "map" | "pool" | "costs" | "prep" | "members";
 
 interface TripWorkspaceProps {
   initialDoc: TripDoc;
@@ -222,26 +223,16 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
   const activeDay: DayRow = useMemo(
     () =>
-      activeDayIdx === 0
-        ? {
-            day_index: 0,
-            label: "候補プール",
-            date: null,
-            departure_point: null,
-            departure_lat: null,
-            departure_lng: null,
-            departure_time: null,
-          }
-        : doc.days.find((d) => d.day_index === activeDayIdx) ??
-          doc.days[0] ?? {
-            day_index: 1,
-            label: "Day 1",
-            date: doc.trip.start_date,
-            departure_point: null,
-            departure_lat: null,
-            departure_lng: null,
-            departure_time: "08:00",
-          },
+      doc.days.find((d) => d.day_index === activeDayIdx) ??
+      doc.days[0] ?? {
+        day_index: 1,
+        label: "Day 1",
+        date: doc.trip.start_date,
+        departure_point: null,
+        departure_lat: null,
+        departure_lng: null,
+        departure_time: "08:00",
+      },
     [doc.days, activeDayIdx, doc.trip.start_date],
   );
 
@@ -387,8 +378,8 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       const nextDoc: TripDoc = { ...doc, spots: optimized };
       setDoc(nextDoc);
       setAutoPlanMsg(summary.message);
-      if (activeDayIdx === 0 && summary.scheduledCount > 0) {
-        setActiveDayIdx(1);
+      if (mainTab === "pool" && summary.scheduledCount > 0) {
+        setMainTab("itinerary");
       }
       await fetch(`/api/trips/${tripId}/sync`, {
         method: "PUT",
@@ -492,14 +483,17 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
     notifyChange();
   }
 
-  function openNewSpotModal(pin?: PendingPin) {
+  function openNewSpotModal(pin?: PendingPin, forceDayIndex?: number) {
     const bhNote = pin?.opening_hours
       ? serializeBusinessHours(parseOsmOpeningHours(pin.opening_hours))
       : "";
+    const targetDayIdx =
+      forceDayIndex !== undefined ? forceDayIndex : mainTab === "pool" ? 0 : activeDay.day_index;
+    const targetList = targetDayIdx === 0 ? poolSpots : daySpots;
     const draft = newSpot({
       id: crypto.randomUUID(),
-      day_index: activeDay.day_index,
-      sort_order: daySpots.length,
+      day_index: targetDayIdx,
+      sort_order: targetList.length,
       name: pin?.name ?? "",
       address: pin?.address ?? null,
       lat: pin?.lat ?? null,
@@ -554,7 +548,9 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
     if (editingSpot?.isNew) {
       setDoc((d) => ({ ...d, spots: [...d.spots, finalSpot] }));
-      if (finalSpot.day_index !== activeDayIdx) {
+      if (finalSpot.day_index === 0) {
+        setMainTab("pool");
+      } else if (finalSpot.day_index !== activeDayIdx) {
         setActiveDayIdx(finalSpot.day_index);
       }
       await fetch(`/api/trips/${tripId}/spots`, {
@@ -567,7 +563,9 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         ...d,
         spots: d.spots.map((x) => (x.id === finalSpot.id ? finalSpot : x)),
       }));
-      if (finalSpot.day_index !== activeDayIdx) {
+      if (finalSpot.day_index === 0 && editingSpot.spot.day_index !== 0) {
+        setMainTab("pool");
+      } else if (finalSpot.day_index >= 1 && finalSpot.day_index !== activeDayIdx) {
         setActiveDayIdx(finalSpot.day_index);
       }
       await fetch(`/api/trips/${tripId}/spots/${finalSpot.id}`, {
@@ -802,7 +800,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         </div>
       </header>
 
-      {/* 日程セグメントピルタブ（Day 1 / Day 2 ... / 📌候補 のみシンプルに横並び） */}
+      {/* 日程セグメントピルタブ（タイムスケジュール・マップ表示時のみ、Day 1 / Day 2 ... だけをシンプルに横並び） */}
       {(mainTab === "itinerary" || mainTab === "map") && (
         <div className="bg-white px-3.5 py-2 border-b border-slate-200/80 shrink-0 z-10 space-y-1.5">
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
@@ -840,28 +838,6 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               );
             })}
 
-            {/* 📌 候補プール（日程未定ストック）タブ */}
-            <button
-              type="button"
-              onClick={() => setActiveDayIdx(0)}
-              className={`px-3 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1 shrink-0 ${
-                activeDay.day_index === 0
-                  ? "bg-indigo-600 text-white shadow-xs"
-                  : "bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
-              }`}
-            >
-              <span>📌 候補</span>
-              <span
-                className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                  activeDay.day_index === 0
-                    ? "bg-white/20 text-white"
-                    : "bg-indigo-200/70 text-indigo-900"
-                }`}
-              >
-                {poolSpots.length}
-              </span>
-            </button>
-
             <button
               type="button"
               onClick={handleAddDay}
@@ -887,6 +863,40 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         </div>
       )}
 
+      {/* 費用・準備・参加者ビュー表示時の上部タイトルバー（ワンタップで旅程へ戻れる） */}
+      {(mainTab === "costs" || mainTab === "prep" || mainTab === "members") && (
+        <div className="bg-white px-3.5 py-2 border-b border-slate-200/80 flex items-center justify-between shrink-0 z-10">
+          <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+            {mainTab === "costs" && (
+              <>
+                <Wallet className="w-4 h-4 text-blue-600" />
+                <span>費用・精算管理（{doc.costs.length}件）</span>
+              </>
+            )}
+            {mainTab === "prep" && (
+              <>
+                <Backpack className="w-4 h-4 text-blue-600" />
+                <span>準備（持ち物 {doc.belongings.length} / 料理 {doc.dishes.length}）</span>
+              </>
+            )}
+            {mainTab === "members" && (
+              <>
+                <Users className="w-4 h-4 text-blue-600" />
+                <span>参加者・全体メモ（{doc.participants.length}名）</span>
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setMainTab("itinerary")}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>旅程へ戻る</span>
+          </button>
+        </div>
+      )}
+
       {/* メインコンテンツ（タブに応じてフルスクリーンで切替） */}
       {mainTab === "map" ? (
         <div className="flex-1 w-full min-h-0 relative">
@@ -898,32 +908,73 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             onSelectSpot={(spot) => setEditingSpot({ spot, isNew: false })}
           />
         </div>
-      ) : mainTab === "itinerary" ? (
+      ) : mainTab === "pool" ? (
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 max-w-3xl w-full mx-auto">
-          {/* 候補プール選択時のガイドカード or Day 1..N の出発設定カード */}
-          {activeDay.day_index === 0 ? (
-            <div className="rounded-2xl bg-indigo-50/80 border border-indigo-200 p-3.5 space-y-2 shadow-2xs">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="text-xs font-extrabold text-indigo-950">
-                  📌 候補プール（まだ何日目に行くか決めていない場所ストック）
-                </div>
-                {doc.spots.length > 0 && (
-                  <button
-                    type="button"
-                    disabled={autoPlanBusy}
-                    onClick={handleAutoPlanItinerary}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold shadow-xs hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>{autoPlanBusy ? "自動編成中..." : "優先度＆移動効率でDay1〜へ自動振り分け"}</span>
-                  </button>
-                )}
+          <div className="rounded-2xl bg-indigo-50/80 border border-indigo-200 p-3.5 space-y-2.5 shadow-2xs">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
+                <Pin className="w-4 h-4 text-indigo-600" />
+                <span>候補プール（日程未定ストック：{poolSpots.length}件）</span>
               </div>
-              <p className="text-[11px] text-indigo-900 leading-relaxed">
-                行きたい場所をとりあえずここに追加しておき、優先度（<strong>★メイン / 決まった / 候補 / 未定</strong>）を選んでから上の「自動振り分け（効率ルート自動編成）」を押すと、営業時間・定休日・宿泊先・移動距離を計算して最適な日程と順番に自動で組み込みます！
+              {doc.spots.length > 0 && (
+                <button
+                  type="button"
+                  disabled={autoPlanBusy}
+                  onClick={handleAutoPlanItinerary}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-extrabold shadow-xs hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{autoPlanBusy ? "自動編成中..." : "効率ルート自動編成"}</span>
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-indigo-900 leading-relaxed">
+              行きたい場所をとりあえずここに追加し、優先度（<strong>★メイン / 決まった / 候補 / 未定</strong>）や<strong>🎯枠タグ（1日目昼食・2日目温泉など）</strong>を設定して「効率ルート自動編成」を押すと、営業時間・定休日・移動時間を考慮して各Dayへ自動配置します。
+            </p>
+          </div>
+
+          {poolSpots.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-white/80 p-6 text-center space-y-3">
+              <p className="text-xs text-slate-600">
+                現在、候補プールに入っているスポットはありません。
               </p>
+              <button
+                type="button"
+                onClick={() => openNewSpotModal(undefined, 0)}
+                className="inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold shadow-xs hover:bg-indigo-700"
+              >
+                <Plus className="w-4 h-4" />
+                候補プールにスポットを追加
+              </button>
             </div>
           ) : (
+            <div className="space-y-1.5">
+              {poolSpots.map((spot, idx) => (
+                <SpotCard
+                  key={spot.id}
+                  index={idx}
+                  spot={spot}
+                  dayDate={null}
+                  timing={undefined}
+                  onEdit={(s) => setEditingSpot({ spot: s, isNew: false })}
+                />
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-end pt-1 pb-6">
+            <button
+              type="button"
+              onClick={() => openNewSpotModal(undefined, 0)}
+              className="inline-flex items-center gap-1 px-4 py-2 rounded-2xl bg-indigo-600 text-white text-xs font-extrabold shadow-sm hover:bg-indigo-700"
+            >
+              <Plus className="w-4 h-4" />
+              候補プールに追加
+            </button>
+          </div>
+        </div>
+      ) : mainTab === "itinerary" ? (
+        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 max-w-3xl w-full mx-auto">
           <div className="rounded-2xl bg-white border border-slate-200/90 p-3 space-y-2 shadow-2xs">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-800 flex-wrap">
@@ -1012,7 +1063,6 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               </div>
             </div>
           </div>
-          )}
 
           {/* 前日からの宿泊チェックアウト表示（日跨ぎ宿泊がある場合、チェックアウト日の先頭に自動表示） */}
           {daySchedule?.checkoutSpot && (
@@ -1201,63 +1251,45 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         </div>
       )}
 
-      {/* iOS ネイティブアプリ風・下部タブバー（5タブ：旅程 / マップ / 費用 / 持ち物・料理 / 参加者） */}
-      <nav className="bg-white/95 backdrop-blur-md border-t border-slate-200 px-1.5 py-1.5 grid grid-cols-5 gap-1 shrink-0 z-20">
+      {/* 下部ナビバー：旅程の3ビュー（タイムスケジュール / マップ / 候補プール）だけに特化してスッキリ表示 */}
+      <nav className="bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-1.5 grid grid-cols-3 gap-2 shrink-0 z-20">
         <button
           type="button"
           onClick={() => setMainTab("itinerary")}
-          className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${
-            mainTab === "itinerary" ? "text-blue-600 font-extrabold bg-blue-50/60" : "text-slate-500"
+          className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition ${
+            mainTab === "itinerary"
+              ? "text-blue-600 font-extrabold bg-blue-50/70"
+              : "text-slate-500 hover:bg-slate-50"
           }`}
         >
           <ListOrdered className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">旅程</span>
+          <span className="text-[11px] mt-0.5">タイムスケジュール</span>
         </button>
 
         <button
           type="button"
           onClick={() => setMainTab("map")}
-          className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${
-            mainTab === "map" ? "text-blue-600 font-extrabold bg-blue-50/60" : "text-slate-500"
+          className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition ${
+            mainTab === "map"
+              ? "text-blue-600 font-extrabold bg-blue-50/70"
+              : "text-slate-500 hover:bg-slate-50"
           }`}
         >
           <MapPin className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">マップ</span>
+          <span className="text-[11px] mt-0.5">マップ</span>
         </button>
 
         <button
           type="button"
-          onClick={() => setMainTab("costs")}
-          className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${
-            mainTab === "costs" ? "text-blue-600 font-extrabold bg-blue-50/60" : "text-slate-500"
+          onClick={() => setMainTab("pool")}
+          className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition ${
+            mainTab === "pool"
+              ? "text-indigo-600 font-extrabold bg-indigo-50/70"
+              : "text-slate-500 hover:bg-slate-50"
           }`}
         >
-          <Wallet className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">費用({doc.costs.length})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setMainTab("prep")}
-          className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${
-            mainTab === "prep" ? "text-blue-600 font-extrabold bg-blue-50/60" : "text-slate-500"
-          }`}
-        >
-          <Backpack className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">
-            準備({doc.belongings.length + doc.dishes.length})
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setMainTab("members")}
-          className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${
-            mainTab === "members" ? "text-blue-600 font-extrabold bg-blue-50/60" : "text-slate-500"
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">参加者({doc.participants.length})</span>
+          <Pin className="w-4 h-4" />
+          <span className="text-[11px] mt-0.5">候補プール({poolSpots.length})</span>
         </button>
       </nav>
 
@@ -1314,14 +1346,118 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                 </button>
               </div>
 
-              <div className="space-y-2">
+              {/* 1. メインビュー切替（旅程 / 費用 / 準備 / 参加者） */}
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-extrabold text-slate-400 px-1">
+                  画面切り替え
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMainTab("itinerary");
+                    setShowSidebar(false);
+                  }}
+                  className={`w-full px-3 py-2.5 rounded-2xl border text-left flex items-center gap-3 transition ${
+                    mainTab === "itinerary" || mainTab === "map" || mainTab === "pool"
+                      ? "border-blue-300 bg-blue-50/80"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
+                    <ListOrdered className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-900">旅程・マップ・候補</div>
+                    <div className="text-[10px] text-slate-500">
+                      スケジュール ({doc.spots.length}件)
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMainTab("costs");
+                    setShowSidebar(false);
+                  }}
+                  className={`w-full px-3 py-2.5 rounded-2xl border text-left flex items-center gap-3 transition ${
+                    mainTab === "costs"
+                      ? "border-blue-300 bg-blue-50/80"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                    <Wallet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-900">
+                      費用・精算 ({doc.costs.length})
+                    </div>
+                    <div className="text-[10px] text-slate-500">支払総額・個人別内訳の登録</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMainTab("prep");
+                    setShowSidebar(false);
+                  }}
+                  className={`w-full px-3 py-2.5 rounded-2xl border text-left flex items-center gap-3 transition ${
+                    mainTab === "prep"
+                      ? "border-blue-300 bg-blue-50/80"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0">
+                    <Backpack className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-900">
+                      準備（持ち物・料理）({doc.belongings.length + doc.dishes.length})
+                    </div>
+                    <div className="text-[10px] text-slate-500">持ち物チェック・料理と材料</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMainTab("members");
+                    setShowSidebar(false);
+                  }}
+                  className={`w-full px-3 py-2.5 rounded-2xl border text-left flex items-center gap-3 transition ${
+                    mainTab === "members"
+                      ? "border-blue-300 bg-blue-50/80"
+                      : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-xl bg-slate-800 text-white flex items-center justify-center shrink-0">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-900">
+                      参加者・全体メモ ({doc.participants.length})
+                    </div>
+                    <div className="text-[10px] text-slate-500">メンバー本名・ニックネーム</div>
+                  </div>
+                </button>
+              </div>
+
+              {/* 2. 共有・Muse出力 */}
+              <div className="space-y-1.5 pt-2 border-t border-slate-200">
+                <div className="text-[10px] font-extrabold text-slate-400 px-1">
+                  共有・AI連携
+                </div>
+
                 <button
                   type="button"
                   onClick={() => {
                     setShowSidebar(false);
                     setShowShareModal(true);
                   }}
-                  className="w-full px-3.5 py-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-blue-50/70 text-left flex items-center gap-3 transition"
+                  className="w-full px-3 py-2.5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-blue-50/70 text-left flex items-center gap-3 transition"
                 >
                   <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
                     <Share2 className="w-4 h-4" />
@@ -1334,33 +1470,11 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
                 <button
                   type="button"
-                  disabled={autoPlanBusy || doc.spots.length === 0}
-                  onClick={() => {
-                    setShowSidebar(false);
-                    void handleAutoPlanItinerary();
-                  }}
-                  className="w-full px-3.5 py-3 rounded-2xl border border-purple-200 bg-purple-50/70 hover:bg-purple-100/70 text-left flex items-center gap-3 transition disabled:opacity-50"
-                >
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 text-white flex items-center justify-center shrink-0">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-purple-950">
-                      効率ルート自動編成
-                    </div>
-                    <div className="text-[10px] text-purple-700">
-                      優先度・枠タグ・移動時間で最適配置
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => {
                     setShowSidebar(false);
                     setShowExportModal(true);
                   }}
-                  className="w-full px-3.5 py-3 rounded-2xl border border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100/70 text-left flex items-center gap-3 transition"
+                  className="w-full px-3 py-2.5 rounded-2xl border border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100/70 text-left flex items-center gap-3 transition"
                 >
                   <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
                     <Sparkles className="w-4 h-4" />
@@ -1371,27 +1485,6 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                     </div>
                     <div className="text-[10px] text-indigo-700">
                       JSON・Markdown・サマリーURL
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowSidebar(false);
-                    openNewSpotModal();
-                  }}
-                  className="w-full px-3.5 py-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-left flex items-center gap-3 transition"
-                >
-                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                    <Link2 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900">
-                      GoogleマップURLから追加
-                    </div>
-                    <div className="text-[10px] text-slate-500">
-                      リンク貼り付けで営業時間も取得
                     </div>
                   </div>
                 </button>
