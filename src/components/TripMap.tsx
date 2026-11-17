@@ -89,29 +89,38 @@ export interface PendingPin {
 interface TripMapProps {
   day: DayRow;
   spots: SpotRow[];
+  checkoutSpot?: SpotRow | null;
   onPickPlace: (pin: PendingPin) => void;
   onSelectSpot: (spot: SpotRow) => void;
 }
 
-export default function TripMap({ day, spots, onPickPlace, onSelectSpot }: TripMapProps) {
+export default function TripMap({
+  day,
+  spots,
+  checkoutSpot,
+  onPickPlace,
+  onSelectSpot,
+}: TripMapProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GeocodeResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [pending, setPending] = useState<PendingPin | null>(null);
   const [flyTarget, setFlyTarget] = useState<{ lat: number; lng: number } | null>(null);
 
+  const depLat = day.departure_lat ?? checkoutSpot?.lat ?? null;
+  const depLng = day.departure_lng ?? checkoutSpot?.lng ?? null;
+  const depName = day.departure_point || checkoutSpot?.name || "出発地点";
+
   const pinnedSpots = spots.filter((s) => s.lat !== null && s.lng !== null);
   const defaultCenter: [number, number] =
     pinnedSpots.length > 0
       ? [pinnedSpots[0].lat!, pinnedSpots[0].lng!]
-      : day.departure_lat !== null && day.departure_lng !== null
-        ? [day.departure_lat, day.departure_lng]
+      : depLat !== null && depLng !== null
+        ? [depLat, depLng]
         : [35.6812, 139.7671]; // 東京駅周辺を既定表示
 
   const polylinePoints: [number, number][] = [
-    ...(day.departure_lat !== null && day.departure_lng !== null
-      ? ([[day.departure_lat, day.departure_lng]] as [number, number][])
-      : []),
+    ...(depLat !== null && depLng !== null ? ([[depLat, depLng]] as [number, number][]) : []),
     ...pinnedSpots.map((s) => [s.lat!, s.lng!] as [number, number]),
   ];
 
@@ -276,10 +285,10 @@ export default function TripMap({ day, spots, onPickPlace, onSelectSpot }: TripM
         <MapTapHandler onTap={handleMapTap} />
         <MapFlyTo target={flyTarget} />
 
-        {day.departure_lat !== null && day.departure_lng !== null && (
-          <Marker position={[day.departure_lat, day.departure_lng]} icon={departureIcon}>
+        {depLat !== null && depLng !== null && (
+          <Marker position={[depLat, depLng]} icon={departureIcon}>
             <Popup>
-              <div className="text-xs font-semibold">出発: {day.departure_point || "出発地点"}</div>
+              <div className="text-xs font-semibold">出発: {depName}</div>
             </Popup>
           </Marker>
         )}

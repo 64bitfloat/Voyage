@@ -9,7 +9,8 @@
  *   宿泊スポット（check_in 設定あり） → チェックイン時刻を基準に開始。チェックアウトが翌日以降なら滞在時間を加算せずチェックインでその日の移動を終える
  *   出発 = 滞在開始 ＋ 滞在時間
  */
-import { combineDateTime, toTokyoDate, toTokyoISO } from "../datetime";
+import { combineDateTime, toTokyoDate, toTokyoHHMM, toTokyoISO } from "../datetime";
+import { deserializeBusinessHours } from "../geo/business-hours";
 import type { DayRow, SpotRow } from "../model/types";
 import type { ScheduleConflict } from "../export/schema";
 
@@ -22,6 +23,10 @@ export interface SpotTiming {
   overrun_minutes: number;
   /** 移動時間が未計算のため0分として扱った */
   travel_unknown: boolean;
+  /** 「何時までに前の場所を出ればOKか」の逆算タイムリミット（HH:MM） */
+  must_leave_prev_by: string | null;
+  /** 逆算タイムリミットの理由（例: "12:00予約" / "20:00閉店"） */
+  leave_by_reason: string | null;
 }
 
 export interface DaySchedule {
@@ -37,6 +42,43 @@ export interface DaySchedule {
 
 const MIN = 60_000;
 
+function computeLeaveByDeadline(
+  dayDate: string,
+  spot: SpotRow,
+): { must_leave_prev_by: string | null; leave_by_reason: string | null } {
+  const travelMs = (spot.transport_duration_minutes ?? 0) * MIN;
+  // 1. 予約・行きたい時刻（固定）がある場合: その時刻 − 移動時間
+  if (spot.is_fixed && spot.reservation_time) {
+    const resMs = Date.parse(spot.reservation_time);
+    const leaveMs = resMs - travelMs;
+    return {
+      must_leave_prev_by: toTokyoHHMM(toTokyoISO(new Date(leaveMs))),
+      leave_by_reason: `${toTokyoHHMM(spot.reservation_time)}着`,
+    };
+  }
+  // 2. 宿泊で予定チェックインがある場合: 予定チェックイン − 移動時間
+  if (spot.category === "lodging" && spot.check_in) {
+    const ciMs = Date.parse(spot.check_in);
+    const leaveMs = ciMs - travelMs;
+    return {
+      must_leave_prev_by: toTokyoHHMM(toTokyoISO(new Date(leaveMs))),
+      leave_by_reason: `${toTokyoHHMM(spot.check_in)}チェックイン`,
+    };
+  }
+  // 3. 営業終了（閉店）時刻がある場合: 閉店時刻 − 滞在時間 − 移動時間
+  const bh = deserializeBusinessHours(spot.transport_note);
+  if (bh.close) {
+    const closeIso = combineDateTime(dayDate, bh.close);
+    const latestArrivalMs = Date.parse(closeIso) - spot.stay_minutes * MIN;
+    const leaveMs = latestArrivalMs - travelMs;
+    return {
+      must_leave_prev_by: toTokyoHHMM(toTokyoISO(new Date(leaveMs))),
+      leave_by_reason: `${bh.close}閉店（滞在${spot.stay_minutes}分）`,
+    };
+  }
+  return { must_leave_prev_by: null, leave_by_reason: null };
+}
+
 export function computeDaySchedule(
   day: DayRow,
   orderedSpots: SpotRow[],
@@ -47,15 +89,22 @@ export function computeDaySchedule(
 
   if (!day.date || (!day.departure_time && !checkoutSpot?.check_out)) {
     for (const s of orderedSpots)
-      timings[s.id] = { arrival: null, departure: null, wait_minutes: 0, overrun_minutes: 0, travel_unknown: false };
+      timings[s.id] = {
+        arrival: null,
+        departure: null,
+        wait_minutes: 0,
+        overrun_minutes: 0,
+        travel_unknown: false,
+        must_leave_prev_by: null,
+        leave_by_reason: null,
+      };
     return { timings, conflicts, end: null, incomplete: true, checkoutSpot };
   }
 
-  // チェックアウトスポットがこの日に設定されており、出発地点が未指定の場合はチェックアウト時刻から1日の行程を開始する
-  let cursor =
-    checkoutSpot?.check_out && !day.departure_point
-      ? Date.parse(checkoutSpot.check_out)
-      : Date.parse(combineDateTime(day.date, day.departure_time ?? "08:00"));
+  // チェックアウトスポットがこの日に設定されている場合は、予定チェックアウト時刻を最優先し、なければ出発時刻から開始
+  let cursor = checkoutSpot?.check_out
+    ? Date.parse(checkoutSpot.check_out)
+    : Date.parse(combineDateTime(day.date, day.departure_time ?? "08:00"));
 
   for (const s of orderedSpots) {
     const travel = s.transport_duration_minutes;
@@ -63,6 +112,7 @@ export function computeDaySchedule(
     let start = arrival;
     let wait = 0;
     let overrun = 0;
+    const deadline = computeLeaveByDeadline(day.date, s);
 
     // 宿泊スポットで check_in が設定されている場合
     if (s.category === "lodging" && s.check_in) {
@@ -73,6 +123,8 @@ export function computeDaySchedule(
       } else if (arrival < ci) {
         wait = Math.round((ci - arrival) / MIN);
         start = ci;
+      } else if (arrival > ci) {
+        overrun = Math.round((arrival - ci) / MIN);
       }
       // チェックアウトが同日の場合はチェックアウト時刻を出発時刻とし、翌日以降（日跨ぎ）の場合はチェックイン時刻でその日の行程を終了する
       let departure = start;
@@ -87,8 +139,9 @@ export function computeDaySchedule(
         arrival: arrivalIso,
         departure: toTokyoISO(new Date(departure)),
         wait_minutes: wait,
-        overrun_minutes: 0,
+        overrun_minutes: overrun,
         travel_unknown: travel === null,
+        ...deadline,
       };
       cursor = departure;
       continue;
@@ -112,6 +165,7 @@ export function computeDaySchedule(
       wait_minutes: wait,
       overrun_minutes: overrun,
       travel_unknown: travel === null,
+      ...deadline,
     };
     if (overrun > 0 && s.reservation_time) {
       conflicts.push({

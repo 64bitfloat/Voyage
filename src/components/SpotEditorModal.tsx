@@ -17,6 +17,7 @@ import { addDays } from "@/lib/model/types";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
 import {
   checkBusinessHoursAlert,
+  checkLodgingPolicyAlert,
   dayNumberToJa,
   deserializeBusinessHours,
   serializeBusinessHours,
@@ -186,10 +187,57 @@ export default function SpotEditorModal({
 
   // フォーム内での営業時間・定休日アラート即時プレビュー
   const liveBhAlert = useMemo(() => {
+    if (spot.category === "lodging") {
+      return hasCheckInOut ? checkLodgingPolicyAlert(bhRule, checkInHHMM, checkOutHHMM) : null;
+    }
     const checkArr = spot.is_fixed ? resTimeHHMM : earliestArrivalHHMM;
     const checkDep = checkArr ? addMinutesHHMM(checkArr, spot.stay_minutes) : null;
     return checkBusinessHoursAlert(bhRule, dayDate, checkArr, checkDep);
-  }, [bhRule, dayDate, earliestArrivalHHMM, resTimeHHMM, spot.is_fixed, spot.stay_minutes]);
+  }, [
+    bhRule,
+    checkInHHMM,
+    checkOutHHMM,
+    dayDate,
+    earliestArrivalHHMM,
+    hasCheckInOut,
+    resTimeHHMM,
+    spot.category,
+    spot.is_fixed,
+    spot.stay_minutes,
+  ]);
+
+  // 「何時までに前の場所を出ればOKか」のフォーム内プレビュー
+  const liveLeaveBy = useMemo(() => {
+    const travel = spot.transport_duration_minutes ?? 0;
+    if (spot.category === "lodging" && hasCheckInOut && checkInHHMM) {
+      return {
+        hhmm: addMinutesHHMM(checkInHHMM, 24 * 60 - travel),
+        reason: `${checkInHHMM}チェックイン`,
+      };
+    }
+    if (spot.is_fixed && resTimeHHMM) {
+      return {
+        hhmm: addMinutesHHMM(resTimeHHMM, 24 * 60 - travel),
+        reason: `${resTimeHHMM}到着希望`,
+      };
+    }
+    if (bhRule.close) {
+      return {
+        hhmm: addMinutesHHMM(bhRule.close, 24 * 60 - spot.stay_minutes - travel),
+        reason: `${bhRule.close}閉店（滞在${spot.stay_minutes}分）`,
+      };
+    }
+    return null;
+  }, [
+    bhRule.close,
+    checkInHHMM,
+    hasCheckInOut,
+    resTimeHHMM,
+    spot.category,
+    spot.is_fixed,
+    spot.stay_minutes,
+    spot.transport_duration_minutes,
+  ]);
 
   const canAutoRoute =
     prevCoords !== null &&
@@ -532,12 +580,14 @@ export default function SpotEditorModal({
             />
           </div>
 
-          {/* 宿泊スポット専用: チェックイン・チェックアウト */}
+          {/* 宿泊スポット専用: 施設の規定チェックイン/アウト可能時間 ＆ 実際の予定チェックイン/アウト時刻 */}
           {spot.category === "lodging" && (
-            <div className="rounded-xl bg-purple-50 border border-purple-200 p-3 space-y-2.5">
+            <div className="rounded-xl bg-purple-50 border border-purple-200 p-3 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-purple-900">宿泊チェックイン・アウト</span>
-                <label className="inline-flex items-center gap-1.5 text-xs text-purple-800">
+                <span className="text-xs font-extrabold text-purple-950">
+                  宿泊チェックイン・アウト設定
+                </span>
+                <label className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-800">
                   <input
                     type="checkbox"
                     checked={hasCheckInOut}
@@ -547,53 +597,116 @@ export default function SpotEditorModal({
                 </label>
               </div>
               {hasCheckInOut && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[11px] font-medium text-purple-800 mb-1">
-                      チェックイン
-                    </label>
-                    <div className="flex gap-1">
-                      <input
-                        type="date"
-                        value={checkInDate}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setCheckInDate(val);
-                          if (val && (!checkOutDate || checkOutDate < val)) {
-                            setCheckOutDate(addDays(val, 1));
+                <>
+                  {/* 1. ホテル・キャンプ場の規定時間（最速IN / 最終OUT） */}
+                  <div className="rounded-lg bg-white/90 border border-purple-200 p-2.5 space-y-1.5">
+                    <div className="text-[11px] font-bold text-purple-900">
+                      ① 施設側の規定時間（任意・入力すると予定時刻が範囲外のとき警告します）
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-purple-700 mb-0.5">
+                          最速チェックイン可能（〜から）
+                        </label>
+                        <input
+                          type="time"
+                          value={bhRule.policyCheckIn ?? ""}
+                          onChange={(e) =>
+                            setBhRule((prev) => ({
+                              ...prev,
+                              policyCheckIn: e.target.value || null,
+                            }))
                           }
-                        }}
-                        className="flex-1 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs"
-                      />
-                      <input
-                        type="time"
-                        value={checkInHHMM}
-                        onChange={(e) => setCheckInHHMM(e.target.value)}
-                        className="w-24 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs"
-                      />
+                          className="w-full px-2 py-1 rounded border border-purple-200 bg-white text-xs font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-purple-700 mb-0.5">
+                          最終チェックアウト期限（〜まで）
+                        </label>
+                        <input
+                          type="time"
+                          value={bhRule.policyCheckOut ?? ""}
+                          onChange={(e) =>
+                            setBhRule((prev) => ({
+                              ...prev,
+                              policyCheckOut: e.target.value || null,
+                            }))
+                          }
+                          className="w-full px-2 py-1 rounded border border-purple-200 bg-white text-xs font-mono"
+                        />
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-medium text-purple-800 mb-1">
-                      チェックアウト
-                    </label>
-                    <div className="flex gap-1">
-                      <input
-                        type="date"
-                        min={checkInDate || undefined}
-                        value={checkOutDate}
-                        onChange={(e) => setCheckOutDate(e.target.value)}
-                        className="flex-1 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs"
-                      />
-                      <input
-                        type="time"
-                        value={checkOutHHMM}
-                        onChange={(e) => setCheckOutHHMM(e.target.value)}
-                        className="w-24 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs"
-                      />
+
+                  {/* 2. 実際の旅程での予定チェックイン・チェックアウト */}
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] font-bold text-purple-950">
+                      ② 私たちの予定チェックイン・チェックアウト日時（翌日の出発時刻に自動連動）
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-medium text-purple-800 mb-1">
+                          予定チェックイン
+                        </label>
+                        <div className="flex gap-1">
+                          <input
+                            type="date"
+                            value={checkInDate}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCheckInDate(val);
+                              if (val && (!checkOutDate || checkOutDate < val)) {
+                                setCheckOutDate(addDays(val, 1));
+                              }
+                            }}
+                            className="flex-1 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs"
+                          />
+                          <input
+                            type="time"
+                            value={checkInHHMM}
+                            onChange={(e) => setCheckInHHMM(e.target.value)}
+                            className="w-24 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs font-mono font-bold"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-medium text-purple-800 mb-1">
+                          予定チェックアウト（翌日の出発時刻）
+                        </label>
+                        <div className="flex gap-1">
+                          <input
+                            type="date"
+                            min={checkInDate || undefined}
+                            value={checkOutDate}
+                            onChange={(e) => setCheckOutDate(e.target.value)}
+                            className="flex-1 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs"
+                          />
+                          <input
+                            type="time"
+                            value={checkOutHHMM}
+                            onChange={(e) => setCheckOutHHMM(e.target.value)}
+                            className="w-24 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs font-mono font-bold"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+
+                  {liveLeaveBy && (
+                    <div className="text-[11px] font-bold text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
+                      🕒 前の地点を <strong>{liveLeaveBy.hhmm} までに</strong> 出発すれば{" "}
+                      {liveLeaveBy.reason} に間に合います
+                    </div>
+                  )}
+
+                  {liveBhAlert && (
+                    <div className="flex items-start gap-1.5 rounded-xl bg-amber-600 text-white px-3 py-2 text-xs font-bold shadow-xs">
+                      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{liveBhAlert}</span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -656,6 +769,14 @@ export default function SpotEditorModal({
                   />
                 </div>
               </div>
+
+              {/* 何時までに前の場所を出ればOKかの一目表示 */}
+              {liveLeaveBy && (
+                <div className="text-[11px] font-bold text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
+                  🕒 前の地点を <strong>{liveLeaveBy.hhmm} までに</strong> 出発すれば{" "}
+                  {liveLeaveBy.reason} に間に合います
+                </div>
+              )}
 
               {/* 旅程的に無理がある場合のリアルタイム警告 */}
               {overrunMinutes > 0 && (

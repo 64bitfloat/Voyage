@@ -14,6 +14,10 @@ export interface BusinessHoursRule {
   closedDays: number[];
   /** OSM等から取得した生テキスト */
   rawText: string;
+  /** 宿泊用: 施設の最速チェックイン可能時刻 HH:MM（例: "14:00"） */
+  policyCheckIn?: string | null;
+  /** 宿泊用: 施設の最終チェックアウト期限 HH:MM（例: "11:00"） */
+  policyCheckOut?: string | null;
 }
 
 const DAY_NAMES_JA = ["日", "月", "火", "水", "木", "金", "土"] as const;
@@ -168,13 +172,24 @@ export function parseJapaneseBusinessHoursFromText(text: string): BusinessHoursR
 
 /** BusinessHoursRule を SpotRow.transport_note に保存・復元するシリアライズ関数 */
 export function serializeBusinessHours(rule: BusinessHoursRule): string {
-  if (!rule.open && !rule.close && rule.closedDays.length === 0 && !rule.rawText) return "";
+  if (
+    !rule.open &&
+    !rule.close &&
+    rule.closedDays.length === 0 &&
+    !rule.rawText &&
+    !rule.policyCheckIn &&
+    !rule.policyCheckOut
+  ) {
+    return "";
+  }
   return JSON.stringify({
     bh: 1,
     open: rule.open,
     close: rule.close,
     closedDays: rule.closedDays,
     rawText: rule.rawText,
+    policyCheckIn: rule.policyCheckIn ?? null,
+    policyCheckOut: rule.policyCheckOut ?? null,
   });
 }
 
@@ -187,6 +202,8 @@ export function deserializeBusinessHours(stored: string | null | undefined): Bus
       close?: string | null;
       closedDays?: number[];
       rawText?: string;
+      policyCheckIn?: string | null;
+      policyCheckOut?: string | null;
     };
     if (obj && obj.bh === 1) {
       return {
@@ -194,6 +211,8 @@ export function deserializeBusinessHours(stored: string | null | undefined): Bus
         close: obj.close ?? null,
         closedDays: Array.isArray(obj.closedDays) ? obj.closedDays : [],
         rawText: obj.rawText ?? "",
+        policyCheckIn: obj.policyCheckIn ?? null,
+        policyCheckOut: obj.policyCheckOut ?? null,
       };
     }
   } catch {
@@ -244,5 +263,31 @@ export function checkBusinessHoursAlert(
     }
   }
 
+  return null;
+}
+
+/**
+ * 宿泊施設の規定チェックイン開始（policyCheckIn）・最終チェックアウト期限（policyCheckOut）と、
+ * 実際の予定チェックイン（plannedCheckInHHMM）・予定チェックアウト（plannedCheckOutHHMM）を照合して警告を返す
+ */
+export function checkLodgingPolicyAlert(
+  rule: BusinessHoursRule,
+  plannedCheckInHHMM: string | null,
+  plannedCheckOutHHMM: string | null,
+): string | null {
+  if (rule.policyCheckIn && plannedCheckInHHMM) {
+    const pMin = hhmmToMin(rule.policyCheckIn);
+    const aMin = hhmmToMin(plannedCheckInHHMM);
+    if (aMin < pMin) {
+      return `⚠️ 予定チェックイン（${plannedCheckInHHMM}）が施設のチェックイン開始時刻（${rule.policyCheckIn}〜）より${pMin - aMin}分早いです`;
+    }
+  }
+  if (rule.policyCheckOut && plannedCheckOutHHMM) {
+    const pMin = hhmmToMin(rule.policyCheckOut);
+    const aMin = hhmmToMin(plannedCheckOutHHMM);
+    if (aMin > pMin) {
+      return `⚠️ 予定チェックアウト（${plannedCheckOutHHMM}）が最終チェックアウト期限（〜${rule.policyCheckOut}）を${aMin - pMin}分超過しています`;
+    }
+  }
   return null;
 }

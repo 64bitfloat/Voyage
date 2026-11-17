@@ -56,7 +56,7 @@ import { useTripSync } from "@/lib/realtime/sync";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
 import { searchPlaces } from "@/lib/geo/geocode";
 import { parseOsmOpeningHours, serializeBusinessHours } from "@/lib/geo/business-hours";
-import { toTokyoHHMM } from "@/lib/datetime";
+import { toTokyoDate, toTokyoHHMM } from "@/lib/datetime";
 import type { PendingPin } from "./TripMap";
 import SpotCard from "./SpotCard";
 import SpotEditorModal from "./SpotEditorModal";
@@ -531,6 +531,40 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         body: JSON.stringify(finalSpot),
       });
     }
+
+    // 宿泊スポットでチェックアウト日時が設定されている場合、該当する翌日（チェックアウト日）の出発設定を宿泊地座標＆チェックアウト時刻で自動更新する
+    if (finalSpot.category === "lodging" && finalSpot.check_out) {
+      const coDate = toTokyoDate(new Date(finalSpot.check_out));
+      const coHHMM = toTokyoHHMM(finalSpot.check_out);
+      const checkoutDay = doc.days.find(
+        (d) => d.date === coDate && d.day_index !== finalSpot.day_index,
+      );
+      if (checkoutDay) {
+        const patchedDay: DayRow = {
+          ...checkoutDay,
+          departure_point: finalSpot.name,
+          departure_lat: finalSpot.lat,
+          departure_lng: finalSpot.lng,
+          departure_time: coHHMM,
+        };
+        setDoc((prev) => ({
+          ...prev,
+          days: prev.days.map((d) =>
+            d.day_index === checkoutDay.day_index ? patchedDay : d,
+          ),
+        }));
+        await fetch(`/api/trips/${tripId}/days/${checkoutDay.day_index}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patchedDay),
+        });
+        const nextDaySpots = spotsOfDay(doc.spots, checkoutDay.day_index);
+        if (nextDaySpots.length > 0) {
+          void recalculateDayRoutes(patchedDay, nextDaySpots);
+        }
+      }
+    }
+
     notifyChange();
   }
 
@@ -798,6 +832,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           <TripMap
             day={activeDay}
             spots={daySpots}
+            checkoutSpot={daySchedule?.checkoutSpot}
             onPickPlace={(pin) => openNewSpotModal(pin)}
             onSelectSpot={(spot) => setEditingSpot({ spot, isNew: false })}
           />
@@ -807,9 +842,14 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           {/* 出発設定カード */}
           <div className="rounded-2xl bg-white border border-slate-200/90 p-3 space-y-2 shadow-2xs">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-800">
+              <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-800 flex-wrap">
                 <Navigation className="w-3.5 h-3.5 text-emerald-600" />
                 <span>{activeDay.label} の出発設定</span>
+                {daySchedule?.checkoutSpot && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
+                    🏨 宿泊地「{daySchedule.checkoutSpot.name}」の座標・チェックアウト時刻と自動連動中
+                  </span>
+                )}
               </div>
               {daySpots.length > 0 && (
                 <button
@@ -840,7 +880,12 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                 <span className="text-[11px] text-slate-500 shrink-0">出発</span>
                 <input
                   type="time"
-                  value={activeDay.departure_time ?? ""}
+                  value={
+                    activeDay.departure_time ??
+                    (daySchedule?.checkoutSpot?.check_out
+                      ? toTokyoHHMM(daySchedule.checkoutSpot.check_out)
+                      : "")
+                  }
                   onChange={(e) =>
                     handleSaveDayPatch({ departure_time: e.target.value || null })
                   }
@@ -851,7 +896,11 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               <div className="sm:col-span-6 flex items-center gap-1.5">
                 <input
                   type="text"
-                  value={activeDay.departure_point ?? ""}
+                  value={
+                    activeDay.departure_point ??
+                    daySchedule?.checkoutSpot?.name ??
+                    ""
+                  }
                   onChange={(e) =>
                     setDoc((prev) => ({
                       ...prev,

@@ -18,6 +18,7 @@ import type { SpotTiming } from "@/lib/schedule/compute";
 import { toTokyoHHMM } from "@/lib/datetime";
 import {
   checkBusinessHoursAlert,
+  checkLodgingPolicyAlert,
   dayNumberToJa,
   deserializeBusinessHours,
 } from "@/lib/geo/business-hours";
@@ -97,12 +98,19 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit }: SpotC
   const st = STATUS_BADGE[spot.status];
   const overrun = timing?.overrun_minutes ?? 0;
   const bhRule = deserializeBusinessHours(spot.transport_note);
-  const bhAlert = checkBusinessHoursAlert(
-    bhRule,
-    dayDate,
-    timing?.arrival ? toTokyoHHMM(timing.arrival) : null,
-    timing?.departure ? toTokyoHHMM(timing.departure) : null,
-  );
+  const bhAlert =
+    spot.category === "lodging"
+      ? checkLodgingPolicyAlert(
+          bhRule,
+          spot.check_in ? toTokyoHHMM(spot.check_in) : null,
+          spot.check_out ? toTokyoHHMM(spot.check_out) : null,
+        )
+      : checkBusinessHoursAlert(
+          bhRule,
+          dayDate,
+          timing?.arrival ? toTokyoHHMM(timing.arrival) : null,
+          timing?.departure ? toTokyoHHMM(timing.departure) : null,
+        );
   const hasBhInfo = Boolean(bhRule.open && bhRule.close) || bhRule.closedDays.length > 0;
 
   return (
@@ -131,6 +139,14 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit }: SpotC
             {timing && timing.wait_minutes > 0 && (
               <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
                 予約まで待機 {timing.wait_minutes}分
+              </span>
+            )}
+            {timing?.must_leave_prev_by && (
+              <span
+                className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full"
+                title={timing.leave_by_reason ?? undefined}
+              >
+                🕒 前の場所を {timing.must_leave_prev_by} までに出発すればOK
               </span>
             )}
           </div>
@@ -252,12 +268,17 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit }: SpotC
               )}
 
               {spot.category === "lodging" && (spot.check_in || spot.check_out) && (
-                <div className="inline-flex items-center gap-1.5 text-xs text-purple-800 bg-purple-50 px-2.5 py-0.5 rounded-lg font-medium">
+                <div className="inline-flex items-center flex-wrap gap-1.5 text-xs text-purple-800 bg-purple-50 px-2.5 py-0.5 rounded-lg font-medium">
                   <BedDouble className="w-3.5 h-3.5" />
                   <span>
-                    IN {spot.check_in ? toTokyoHHMM(spot.check_in) : "未定"} / OUT{" "}
+                    予定: IN {spot.check_in ? toTokyoHHMM(spot.check_in) : "未定"} / OUT{" "}
                     {spot.check_out ? toTokyoHHMM(spot.check_out) : "未定"}
                   </span>
+                  {(bhRule.policyCheckIn || bhRule.policyCheckOut) && (
+                    <span className="text-[10px] text-purple-600">
+                      （規定 IN {bhRule.policyCheckIn ?? "-"}〜 / OUT 〜{bhRule.policyCheckOut ?? "-"}）
+                    </span>
+                  )}
                 </div>
               )}
 
