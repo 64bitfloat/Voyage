@@ -563,7 +563,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         ...d,
         spots: d.spots.map((x) => (x.id === finalSpot.id ? finalSpot : x)),
       }));
-      if (finalSpot.day_index === 0 && editingSpot.spot.day_index !== 0) {
+      if (finalSpot.day_index === 0 && editingSpot?.spot.day_index !== 0) {
         setMainTab("pool");
       } else if (finalSpot.day_index >= 1 && finalSpot.day_index !== activeDayIdx) {
         setActiveDayIdx(finalSpot.day_index);
