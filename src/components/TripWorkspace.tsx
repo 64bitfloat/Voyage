@@ -30,9 +30,8 @@ import {
   Wallet,
   Backpack,
   Users,
-  Maximize2,
-  Minimize2,
   BedDouble,
+  ListOrdered,
 } from "lucide-react";
 import {
   addDays,
@@ -71,7 +70,7 @@ const TripMap = dynamic(() => import("./TripMap"), {
   ),
 });
 
-type MainTab = "itinerary" | "costs" | "prep" | "members";
+type MainTab = "itinerary" | "map" | "costs" | "prep" | "members";
 
 interface TripWorkspaceProps {
   initialDoc: TripDoc;
@@ -178,7 +177,6 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
   const [mainTab, setMainTab] = useState<MainTab>("itinerary");
   const [activeDayIdx, setActiveDayIdx] = useState<number>(1);
-  const [mapExpanded, setMapExpanded] = useState(false);
   const [editingSpot, setEditingSpot] = useState<{ spot: SpotRow; isNew: boolean } | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -713,270 +711,289 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         </div>
       </header>
 
-      {/* メインコンテンツ（タブに応じて切替） */}
-      {mainTab === "itinerary" ? (
-        <>
-          {/* 上部: インタラクティブ地図（サイズ切替トグル付き） */}
-          <div
-            className={`relative w-full shrink-0 transition-all duration-200 ${
-              mapExpanded ? "h-[54vh]" : "h-[33vh] min-h-[200px] max-h-[320px]"
-            }`}
-          >
-            <TripMap
-              day={activeDay}
-              spots={daySpots}
-              onPickPlace={(pin) => openNewSpotModal(pin)}
-              onSelectSpot={(spot) => setEditingSpot({ spot, isNew: false })}
-            />
+      {/* 日程セグメントピルタブ（旅程タブ・マップタブ共通で上部にスッキリ表示） */}
+      {(mainTab === "itinerary" || mainTab === "map") && (
+        <div className="bg-white px-3 py-2 border-b border-slate-200/80 shrink-0 z-10">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              {doc.days.map((d) => {
+                const active = d.day_index === activeDay.day_index;
+                const dayConflicts = schedule.byDay.get(d.day_index)?.conflicts.length ?? 0;
+                return (
+                  <button
+                    key={d.day_index}
+                    type="button"
+                    onClick={() => setActiveDayIdx(d.day_index)}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1 ${
+                      active
+                        ? "bg-slate-900 text-white shadow-xs"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    <span>{d.label}</span>
+                    {d.date && (
+                      <span
+                        className={`text-[10px] font-medium ${
+                          active ? "text-slate-300" : "text-slate-400"
+                        }`}
+                      >
+                        {d.date.slice(5).replace("-", "/")}
+                      </span>
+                    )}
+                    {dayConflicts > 0 && (
+                      <span
+                        className="w-2 h-2 rounded-full bg-red-500 inline-block"
+                        title="時刻超過あり"
+                      />
+                    )}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={handleAddDay}
+                className="px-3 py-1.5 rounded-full text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 whitespace-nowrap"
+              >
+                ＋日程追加
+              </button>
+            </div>
+
+            {/* 旅程 ⇔ マップ ワンタップ切替ピル */}
             <button
               type="button"
-              onClick={() => setMapExpanded((v) => !v)}
-              className="absolute bottom-3 right-3 z-[1000] p-2 rounded-xl bg-white/95 shadow-md border border-slate-200 text-slate-700 hover:bg-slate-50"
-              title={mapExpanded ? "地図を縮小" : "地図を拡大"}
+              onClick={() => setMainTab(mainTab === "itinerary" ? "map" : "itinerary")}
+              className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-bold shadow-xs hover:bg-blue-700"
             >
-              {mapExpanded ? (
-                <Minimize2 className="w-4 h-4" />
+              {mainTab === "itinerary" ? (
+                <>
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>マップを見る</span>
+                </>
               ) : (
-                <Maximize2 className="w-4 h-4" />
+                <>
+                  <ListOrdered className="w-3.5 h-3.5" />
+                  <span>旅程に戻る</span>
+                </>
               )}
             </button>
           </div>
+        </div>
+      )}
 
-          {/* Voyage ボトムシート風タイムラインパネル */}
-          <div className="flex-1 flex flex-col min-h-0 -mt-3 z-10 rounded-t-3xl bg-[#f5f6f8] shadow-[0_-6px_20px_rgba(15,23,42,0.08)] border-t border-slate-200/80 overflow-hidden">
-            {/* シートハンドル + 日程セグメントピルタブ（Day 1 / Day 2 ... のみ） */}
-            <div className="bg-white px-3 pt-2 pb-2 border-b border-slate-200/80 shrink-0">
-              <div className="w-9 h-1 rounded-full bg-slate-300 mx-auto mb-2" />
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                {doc.days.map((d) => {
-                  const active = d.day_index === activeDay.day_index;
-                  const dayConflicts = schedule.byDay.get(d.day_index)?.conflicts.length ?? 0;
-                  return (
-                    <button
-                      key={d.day_index}
-                      type="button"
-                      onClick={() => setActiveDayIdx(d.day_index)}
-                      className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1 ${
-                        active
-                          ? "bg-slate-900 text-white shadow-xs"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      }`}
-                    >
-                      <span>{d.label}</span>
-                      {d.date && (
-                        <span
-                          className={`text-[10px] font-medium ${
-                            active ? "text-slate-300" : "text-slate-400"
-                          }`}
-                        >
-                          {d.date.slice(5).replace("-", "/")}
-                        </span>
-                      )}
-                      {dayConflicts > 0 && (
-                        <span
-                          className="w-2 h-2 rounded-full bg-red-500 inline-block"
-                          title="時刻超過あり"
-                        />
-                      )}
-                    </button>
-                  );
-                })}
+      {/* メインコンテンツ（タブに応じてフルスクリーンで切替） */}
+      {mainTab === "map" ? (
+        <div className="flex-1 w-full min-h-0 relative">
+          <TripMap
+            day={activeDay}
+            spots={daySpots}
+            onPickPlace={(pin) => openNewSpotModal(pin)}
+            onSelectSpot={(spot) => setEditingSpot({ spot, isNew: false })}
+          />
+        </div>
+      ) : mainTab === "itinerary" ? (
+        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 max-w-3xl w-full mx-auto">
+          {/* 出発設定カード */}
+          <div className="rounded-2xl bg-white border border-slate-200/90 p-3 space-y-2 shadow-2xs">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-800">
+                <Navigation className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{activeDay.label} の出発設定</span>
+              </div>
+              {daySpots.length > 0 && (
                 <button
                   type="button"
-                  onClick={handleAddDay}
-                  className="px-3 py-1.5 rounded-full text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 whitespace-nowrap"
+                  disabled={recalcBusy}
+                  onClick={() => recalculateDayRoutes(activeDay, daySpots)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 disabled:opacity-50"
                 >
-                  ＋日程追加
+                  <Calculator className="w-3 h-3" />
+                  {recalcBusy ? "ルート計算中..." : "移動時間を再計算"}
                 </button>
-              </div>
+              )}
             </div>
 
-            {/* タイムライン本体 */}
-            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
-              {/* 出発設定カード */}
-              <div className="rounded-2xl bg-white border border-slate-200/90 p-3 space-y-2 shadow-2xs">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-800">
-                    <Navigation className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{activeDay.label} の出発設定</span>
-                  </div>
-                  {daySpots.length > 0 && (
-                    <button
-                      type="button"
-                      disabled={recalcBusy}
-                      onClick={() => recalculateDayRoutes(activeDay, daySpots)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 disabled:opacity-50"
-                    >
-                      <Calculator className="w-3 h-3" />
-                      {recalcBusy ? "ルート計算中..." : "移動時間を再計算"}
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                  <div className="sm:col-span-3 flex items-center gap-1.5">
-                    <span className="text-[11px] text-slate-500 shrink-0">日付</span>
-                    <input
-                      type="date"
-                      value={activeDay.date ?? ""}
-                      onChange={(e) => handleSaveDayPatch({ date: e.target.value || null })}
-                      className="w-full px-2 py-1.5 rounded-xl border border-slate-300 text-xs"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-3 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="text-[11px] text-slate-500 shrink-0">出発</span>
-                    <input
-                      type="time"
-                      value={activeDay.departure_time ?? ""}
-                      onChange={(e) =>
-                        handleSaveDayPatch({ departure_time: e.target.value || null })
-                      }
-                      className="w-full px-2 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-6 flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      value={activeDay.departure_point ?? ""}
-                      onChange={(e) =>
-                        setDoc((prev) => ({
-                          ...prev,
-                          days: prev.days.map((d) =>
-                            d.day_index === activeDay.day_index
-                              ? { ...d, departure_point: e.target.value || null }
-                              : d,
-                          ),
-                        }))
-                      }
-                      onBlur={(e) =>
-                        handleSaveDayPatch({ departure_point: e.target.value || null })
-                      }
-                      placeholder="出発地点（例: 自宅 / 新宿駅）"
-                      className="flex-1 px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs"
-                    />
-                    <button
-                      type="button"
-                      disabled={depGeoBusy}
-                      onClick={handleGeocodeDeparture}
-                      className="px-2.5 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 shrink-0"
-                    >
-                      {depGeoBusy ? "..." : "座標取得"}
-                    </button>
-                  </div>
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+              <div className="sm:col-span-3 flex items-center gap-1.5">
+                <span className="text-[11px] text-slate-500 shrink-0">日付</span>
+                <input
+                  type="date"
+                  value={activeDay.date ?? ""}
+                  onChange={(e) => handleSaveDayPatch({ date: e.target.value || null })}
+                  className="w-full px-2 py-1.5 rounded-xl border border-slate-300 text-xs"
+                />
               </div>
 
-              {/* 前日からの宿泊チェックアウト表示（日跨ぎ宿泊がある場合、チェックアウト日の先頭に自動表示） */}
-              {daySchedule?.checkoutSpot && (
-                <div className="grid grid-cols-[54px_20px_1fr] items-stretch gap-x-1">
-                  <div className="flex flex-col justify-center py-2 pr-1 text-right font-mono">
-                    <span className="text-xs font-extrabold text-purple-800">
-                      {daySchedule.checkoutSpot.check_out
-                        ? toTokyoHHMM(daySchedule.checkoutSpot.check_out)
-                        : "--:--"}
-                    </span>
-                    <span className="text-[10px] text-purple-500 font-bold">OUT</span>
-                  </div>
-                  <div className="relative flex flex-col items-center">
-                    <div className="w-0.5 flex-1 bg-purple-200" />
-                    <div className="w-6 h-6 rounded-full bg-purple-600 text-white flex items-center justify-center ring-4 ring-purple-100 shadow-xs shrink-0">
-                      <BedDouble className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="w-0.5 flex-1 bg-slate-200" />
-                  </div>
-                  <div className="py-1 pl-1.5 min-w-0">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setEditingSpot({ spot: daySchedule.checkoutSpot!, isNew: false })
-                      }
-                      className="w-full text-left rounded-2xl border border-purple-200 bg-purple-50/70 p-3 shadow-2xs hover:bg-purple-50 transition space-y-1"
-                    >
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-600 text-white">
-                          チェックアウト
-                        </span>
-                        <span className="text-[11px] font-semibold text-purple-800">
-                          前日からの宿泊（タップで編集）
-                        </span>
-                      </div>
-                      <div className="text-sm font-extrabold text-slate-900 truncate">
-                        {daySchedule.checkoutSpot.name}
-                      </div>
-                      {daySchedule.checkoutSpot.address && (
-                        <div className="flex items-center gap-1 text-xs text-slate-500 truncate">
-                          <MapPin className="w-3 h-3 shrink-0 text-purple-400" />
-                          <span className="truncate">{daySchedule.checkoutSpot.address}</span>
-                        </div>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
+              <div className="sm:col-span-3 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span className="text-[11px] text-slate-500 shrink-0">出発</span>
+                <input
+                  type="time"
+                  value={activeDay.departure_time ?? ""}
+                  onChange={(e) =>
+                    handleSaveDayPatch({ departure_time: e.target.value || null })
+                  }
+                  className="w-full px-2 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold"
+                />
+              </div>
 
-              {/* スポット一覧（Voyage風クロノグラフ軸 + D&D） */}
-              {daySpots.length === 0 && !daySchedule?.checkoutSpot ? (
-                <div className="rounded-3xl border border-dashed border-slate-300 bg-white/80 p-6 text-center space-y-2.5">
-                  <p className="text-xs text-slate-600">
-                    上の地図を検索またはタップしてピンを立て、「しおりに追加」を押してください。
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => openNewSpotModal()}
-                    className="inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-xs hover:bg-blue-700"
-                  >
-                    <Plus className="w-4 h-4" />
-                    スポットを直接追加
-                  </button>
-                </div>
-              ) : (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <SortableContext
-                    items={daySpots.map((s) => s.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div>
-                      {daySpots.map((spot, idx) => (
-                        <SpotCard
-                          key={spot.id}
-                          index={idx}
-                          spot={spot}
-                          timing={daySchedule?.timings[spot.id]}
-                          onEdit={(s) => setEditingSpot({ spot: s, isNew: false })}
-                        />
-                      ))}
-                    </div>
-                  </SortableContext>
-                </DndContext>
-              )}
-
-              <div className="flex items-center justify-between pt-1 pb-6">
-                {daySchedule?.end ? (
-                  <span className="text-xs text-slate-500 font-mono font-bold">
-                    🏁 全行程終了予定: {toTokyoHHMM(daySchedule.end)}
-                  </span>
-                ) : (
-                  <span />
-                )}
+              <div className="sm:col-span-6 flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={activeDay.departure_point ?? ""}
+                  onChange={(e) =>
+                    setDoc((prev) => ({
+                      ...prev,
+                      days: prev.days.map((d) =>
+                        d.day_index === activeDay.day_index
+                          ? { ...d, departure_point: e.target.value || null }
+                          : d,
+                      ),
+                    }))
+                  }
+                  onBlur={(e) =>
+                    handleSaveDayPatch({ departure_point: e.target.value || null })
+                  }
+                  placeholder="出発地点（例: 自宅 / 新宿駅）"
+                  className="flex-1 px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs"
+                />
                 <button
                   type="button"
-                  onClick={() => openNewSpotModal()}
-                  className="inline-flex items-center gap-1 px-4 py-2 rounded-2xl bg-blue-600 text-white text-xs font-extrabold shadow-sm hover:bg-blue-700"
+                  disabled={depGeoBusy}
+                  onClick={handleGeocodeDeparture}
+                  className="px-2.5 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 shrink-0"
                 >
-                  <Plus className="w-4 h-4" />
-                  スポットを追加
+                  {depGeoBusy ? "..." : "座標取得"}
                 </button>
               </div>
             </div>
           </div>
-        </>
+
+          {/* 前日からの宿泊チェックアウト表示（日跨ぎ宿泊がある場合、チェックアウト日の先頭に自動表示） */}
+          {daySchedule?.checkoutSpot && (
+            <div className="grid grid-cols-[54px_20px_1fr] items-stretch gap-x-1">
+              <div className="flex flex-col justify-center py-2 pr-1 text-right font-mono">
+                <span className="text-xs font-extrabold text-purple-800">
+                  {daySchedule.checkoutSpot.check_out
+                    ? toTokyoHHMM(daySchedule.checkoutSpot.check_out)
+                    : "--:--"}
+                </span>
+                <span className="text-[10px] text-purple-500 font-bold">OUT</span>
+              </div>
+              <div className="relative flex flex-col items-center">
+                <div className="w-0.5 flex-1 bg-purple-200" />
+                <div className="w-6 h-6 rounded-full bg-purple-600 text-white flex items-center justify-center ring-4 ring-purple-100 shadow-xs shrink-0">
+                  <BedDouble className="w-3.5 h-3.5" />
+                </div>
+                <div className="w-0.5 flex-1 bg-slate-200" />
+              </div>
+              <div className="py-1 pl-1.5 min-w-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditingSpot({ spot: daySchedule.checkoutSpot!, isNew: false })
+                  }
+                  className="w-full text-left rounded-2xl border border-purple-200 bg-purple-50/70 p-3 shadow-2xs hover:bg-purple-50 transition space-y-1"
+                >
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-600 text-white">
+                      チェックアウト
+                    </span>
+                    <span className="text-[11px] font-semibold text-purple-800">
+                      前日からの宿泊（タップで編集）
+                    </span>
+                  </div>
+                  <div className="text-sm font-extrabold text-slate-900 truncate">
+                    {daySchedule.checkoutSpot.name}
+                  </div>
+                  {daySchedule.checkoutSpot.address && (
+                    <div className="flex items-center gap-1 text-xs text-slate-500 truncate">
+                      <MapPin className="w-3 h-3 shrink-0 text-purple-400" />
+                      <span className="truncate">{daySchedule.checkoutSpot.address}</span>
+                    </div>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* スポット一覧（Voyage風クロノグラフ軸 + D&D） */}
+          {daySpots.length === 0 && !daySchedule?.checkoutSpot ? (
+            <div className="rounded-3xl border border-dashed border-slate-300 bg-white/80 p-6 text-center space-y-3">
+              <p className="text-xs text-slate-600">
+                まだスポットがありません。直接追加するか、「マップ」タブから場所を検索・タップしてピン留めできます。
+              </p>
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => openNewSpotModal()}
+                  className="inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-xs hover:bg-blue-700"
+                >
+                  <Plus className="w-4 h-4" />
+                  スポットを直接追加
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMainTab("map")}
+                  className="inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-xs hover:bg-slate-800"
+                >
+                  <MapPin className="w-4 h-4" />
+                  マップからピン留め追加
+                </button>
+              </div>
+            </div>
+          ) : (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={daySpots.map((s) => s.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div>
+                  {daySpots.map((spot, idx) => (
+                    <SpotCard
+                      key={spot.id}
+                      index={idx}
+                      spot={spot}
+                      timing={daySchedule?.timings[spot.id]}
+                      onEdit={(s) => setEditingSpot({ spot: s, isNew: false })}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          )}
+
+          <div className="flex items-center justify-between pt-1 pb-6">
+            {daySchedule?.end ? (
+              <span className="text-xs text-slate-500 font-mono font-bold">
+                🏁 全行程終了予定: {toTokyoHHMM(daySchedule.end)}
+              </span>
+            ) : (
+              <span />
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMainTab("map")}
+                className="inline-flex items-center gap-1 px-3.5 py-2 rounded-2xl border border-slate-300 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50"
+              >
+                <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                マップで追加
+              </button>
+              <button
+                type="button"
+                onClick={() => openNewSpotModal()}
+                className="inline-flex items-center gap-1 px-4 py-2 rounded-2xl bg-blue-600 text-white text-xs font-extrabold shadow-sm hover:bg-blue-700"
+              >
+                <Plus className="w-4 h-4" />
+                スポットを追加
+              </button>
+            </div>
+          </div>
+        </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-3.5 py-4 max-w-3xl w-full mx-auto">
           {mainTab === "costs" && (
@@ -1037,24 +1054,35 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         </div>
       )}
 
-      {/* iOS ネイティブアプリ風・下部タブバー */}
-      <nav className="bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 py-1.5 grid grid-cols-4 gap-1 shrink-0 z-20">
+      {/* iOS ネイティブアプリ風・下部タブバー（5タブ：旅程 / マップ / 費用 / 持ち物・料理 / 参加者） */}
+      <nav className="bg-white/95 backdrop-blur-md border-t border-slate-200 px-1.5 py-1.5 grid grid-cols-5 gap-1 shrink-0 z-20">
         <button
           type="button"
           onClick={() => setMainTab("itinerary")}
           className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${
-            mainTab === "itinerary" ? "text-blue-600 font-extrabold" : "text-slate-500"
+            mainTab === "itinerary" ? "text-blue-600 font-extrabold bg-blue-50/60" : "text-slate-500"
+          }`}
+        >
+          <ListOrdered className="w-4 h-4" />
+          <span className="text-[10px] mt-0.5">旅程</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMainTab("map")}
+          className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${
+            mainTab === "map" ? "text-blue-600 font-extrabold bg-blue-50/60" : "text-slate-500"
           }`}
         >
           <MapPin className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">旅程</span>
+          <span className="text-[10px] mt-0.5">マップ</span>
         </button>
 
         <button
           type="button"
           onClick={() => setMainTab("costs")}
           className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${
-            mainTab === "costs" ? "text-blue-600 font-extrabold" : "text-slate-500"
+            mainTab === "costs" ? "text-blue-600 font-extrabold bg-blue-50/60" : "text-slate-500"
           }`}
         >
           <Wallet className="w-4 h-4" />
@@ -1065,12 +1093,12 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           type="button"
           onClick={() => setMainTab("prep")}
           className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${
-            mainTab === "prep" ? "text-blue-600 font-extrabold" : "text-slate-500"
+            mainTab === "prep" ? "text-blue-600 font-extrabold bg-blue-50/60" : "text-slate-500"
           }`}
         >
           <Backpack className="w-4 h-4" />
           <span className="text-[10px] mt-0.5">
-            持ち物・料理({doc.belongings.length + doc.dishes.length})
+            準備({doc.belongings.length + doc.dishes.length})
           </span>
         </button>
 
@@ -1078,7 +1106,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           type="button"
           onClick={() => setMainTab("members")}
           className={`flex flex-col items-center justify-center py-1 rounded-xl transition ${
-            mainTab === "members" ? "text-blue-600 font-extrabold" : "text-slate-500"
+            mainTab === "members" ? "text-blue-600 font-extrabold bg-blue-50/60" : "text-slate-500"
           }`}
         >
           <Users className="w-4 h-4" />
