@@ -45,6 +45,18 @@ export default function HomePage() {
           // ignore
         }
       }
+      try {
+        localStorage.setItem(
+          `voyage:init:${json.id}`,
+          JSON.stringify({
+            title: title.trim(),
+            start_date: startDate || null,
+            end_date: endDate || null,
+          }),
+        );
+      } catch {
+        // ignore
+      }
       router.push(`/trip/${json.id}`);
     } catch {
       setErr("通信エラーが発生しました");

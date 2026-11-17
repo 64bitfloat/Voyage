@@ -29,7 +29,23 @@ export async function GET(req: Request, { params }: Ctx) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const doc = await getStore().getTripDoc(tripId);
+  const store = getStore();
+  let doc = await store.getTripDoc(tripId);
+  if (!doc && store.kind === "memory") {
+    const { initialDays } = await import("@/lib/model/types");
+    await store.createTrip(
+      {
+        id: tripId,
+        title: "精進レークサイドキャンプ",
+        start_date: "2026-12-12",
+        end_date: "2026-12-13",
+        notes: "",
+      },
+      initialDays("2026-12-12", "2026-12-13"),
+      null,
+    );
+    doc = await store.getTripDoc(tripId);
+  }
   if (!doc) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   DndContext,
@@ -76,7 +76,48 @@ interface TripWorkspaceProps {
 }
 
 export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
-  const [doc, setDoc] = useState<TripDoc>(initialDoc);
+  const [doc, setDoc] = useState<TripDoc>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem(`voyage:doc:${initialDoc.trip.id}`);
+        if (cached) {
+          const parsed = JSON.parse(cached) as TripDoc;
+          // サーバーが空（MemoryStoreの別インスタンス）でローカルにデータがある場合はローカルを優先
+          if (initialDoc.spots.length === 0 && parsed.spots?.length > 0) {
+            return parsed;
+          }
+        }
+        const initMeta = localStorage.getItem(`voyage:init:${initialDoc.trip.id}`);
+        if (initMeta) {
+          const meta = JSON.parse(initMeta) as {
+            title?: string;
+            start_date?: string | null;
+            end_date?: string | null;
+          };
+          return {
+            ...initialDoc,
+            trip: {
+              ...initialDoc.trip,
+              title: meta.title || initialDoc.trip.title,
+              start_date: meta.start_date !== undefined ? meta.start_date : initialDoc.trip.start_date,
+              end_date: meta.end_date !== undefined ? meta.end_date : initialDoc.trip.end_date,
+            },
+          };
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return initialDoc;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`voyage:doc:${doc.trip.id}`, JSON.stringify(doc));
+    } catch {
+      // ignore quota errors
+    }
+  }, [doc]);
   const [mainTab, setMainTab] = useState<MainTab>("itinerary");
   const [activeDayIdx, setActiveDayIdx] = useState<number>(
     initialDoc.days.find((d) => d.day_index === 1)?.day_index ?? 0,
