@@ -200,6 +200,12 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   const [showSidebar, setShowSidebar] = useState(false);
   const [showDepartureModal, setShowDepartureModal] = useState(false);
   const [recalcBusy, setRecalcBusy] = useState(false);
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const id = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
   const [autoPlanBusy, setAutoPlanBusy] = useState(false);
   const [autoPlanMsg, setAutoPlanMsg] = useState<string | null>(null);
   const [unlocked, setUnlocked] = useState<boolean>(() => {
@@ -1157,13 +1163,14 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           {/* ワンタップ道案内（現在地 → 次の目的地） */}
           {(() => {
             if (daySpots.length === 0) return null;
-            const nowMs = Date.now();
             const nextSpot =
-              daySpots.find((s) => {
-                const t = daySchedule?.timings[s.id];
-                const ref = t?.departure ?? t?.arrival;
-                return ref ? Date.parse(ref) > nowMs : false;
-              }) ?? daySpots[0];
+              (nowMs !== null
+                ? daySpots.find((s) => {
+                    const t = daySchedule?.timings[s.id];
+                    const ref = t?.departure ?? t?.arrival;
+                    return ref ? Date.parse(ref) > nowMs : false;
+                  })
+                : undefined) ?? daySpots[0];
             const navUrl = nextSpot ? buildGoogleMapsNavUrl(nextSpot) : null;
             if (!navUrl || !nextSpot) return null;
             return (
