@@ -570,14 +570,15 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       ? targetDaySpots.findIndex((s) => s.id === spot.id)
       : targetDaySpots.length;
     const prevSpot = idxInTarget > 0 ? targetDaySpots[idxInTarget - 1] : null;
-    const prev: LatLng | null =
-      prevSpot && prevSpot.lat !== null && prevSpot.lng !== null
+    const prev: LatLng | null = prevSpot
+      ? prevSpot.lat !== null && prevSpot.lng !== null
         ? { lat: prevSpot.lat, lng: prevSpot.lng }
-        : targetDay.departure_lat !== null && targetDay.departure_lng !== null
-          ? { lat: targetDay.departure_lat, lng: targetDay.departure_lng }
-          : targetCo && targetCo.lat !== null && targetCo.lng !== null
-            ? { lat: targetCo.lat, lng: targetCo.lng }
-            : null;
+        : null
+      : targetDay.departure_lat !== null && targetDay.departure_lng !== null
+        ? { lat: targetDay.departure_lat, lng: targetDay.departure_lng }
+        : targetCo && targetCo.lat !== null && targetCo.lng !== null
+          ? { lat: targetCo.lat, lng: targetCo.lng }
+          : null;
     if (
       finalSpot.transport_duration_minutes === null &&
       prev &&
@@ -639,6 +640,13 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       // 情報や日程が変わった際もその日の全区間の距離・時間を自動再計算する
       if (finalSpot.day_index >= 1) {
         void recalculateDayRoutes(targetDay, spotsOfDay(nextSpotsList, finalSpot.day_index));
+      }
+      const prevDayIdx = editingSpot?.spot.day_index;
+      if (prevDayIdx && prevDayIdx >= 1 && prevDayIdx !== finalSpot.day_index) {
+        const oldDay = doc.days.find((d) => d.day_index === prevDayIdx);
+        if (oldDay) {
+          void recalculateDayRoutes(oldDay, spotsOfDay(nextSpotsList, prevDayIdx));
+        }
       }
     }
 

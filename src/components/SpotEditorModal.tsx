@@ -215,8 +215,10 @@ export default function SpotEditorModal({
     const lastPrev = precedingSpots.length > 0 ? precedingSpots[precedingSpots.length - 1] : null;
 
     let coords: LatLng | null = null;
-    if (lastPrev && lastPrev.lat !== null && lastPrev.lng !== null) {
-      coords = { lat: lastPrev.lat, lng: lastPrev.lng };
+    if (lastPrev) {
+      if (lastPrev.lat !== null && lastPrev.lng !== null) {
+        coords = { lat: lastPrev.lat, lng: lastPrev.lng };
+      }
     } else if (selectedDay.departure_lat !== null && selectedDay.departure_lng !== null) {
       coords = { lat: selectedDay.departure_lat, lng: selectedDay.departure_lng };
     } else if (coSpot && coSpot.lat !== null && coSpot.lng !== null) {
