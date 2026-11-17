@@ -202,9 +202,12 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [nowMs, setNowMs] = useState<number | null>(null);
   useEffect(() => {
-    setNowMs(Date.now());
+    const t0 = window.setTimeout(() => setNowMs(Date.now()), 0);
     const id = window.setInterval(() => setNowMs(Date.now()), 60_000);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearTimeout(t0);
+      window.clearInterval(id);
+    };
   }, []);
   const [autoPlanBusy, setAutoPlanBusy] = useState(false);
   const [autoPlanMsg, setAutoPlanMsg] = useState<string | null>(null);
