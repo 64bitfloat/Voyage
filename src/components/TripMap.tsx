@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Search, MapPin, Plus } from "lucide-react";
+import { Search, MapPin, Plus, Clock, Edit3 } from "lucide-react";
 import type { DayRow, SpotRow } from "@/lib/model/types";
+import type { SpotTiming } from "@/lib/schedule/compute";
+import { toTokyoHHMM } from "@/lib/datetime";
 import { searchPlaces, type GeocodeResult } from "@/lib/geo/geocode";
 
 const CATEGORY_COLOR: Record<SpotRow["category"], string> = {
@@ -95,6 +97,7 @@ export interface PendingPin {
 interface TripMapProps {
   day: DayRow;
   spots: SpotRow[];
+  timings?: Record<string, SpotTiming>;
   checkoutSpot?: SpotRow | null;
   onPickPlace: (pin: PendingPin) => void;
   onSelectSpot: (spot: SpotRow) => void;
@@ -103,6 +106,7 @@ interface TripMapProps {
 export default function TripMap({
   day,
   spots,
+  timings,
   checkoutSpot,
   onPickPlace,
   onSelectSpot,
@@ -262,21 +266,54 @@ export default function TripMap({
           </Marker>
         )}
 
-        {spots.map((s, idx) =>
-          s.lat !== null && s.lng !== null ? (
+        {spots.map((s, idx) => {
+          if (s.lat === null || s.lng === null) return null;
+          const timing = timings?.[s.id];
+          return (
             <Marker
               key={s.id}
               position={[s.lat, s.lng]}
               icon={makeNumberIcon(idx + 1, CATEGORY_COLOR[s.category], s.status)}
-              eventHandlers={{ click: () => onSelectSpot(s) }}
             >
               <Popup>
-                <div className="text-xs font-bold">{idx + 1}. {s.name}</div>
-                {s.address && <div className="text-[11px] text-neutral-500">{s.address}</div>}
+                <div className="min-w-[180px] max-w-[240px] space-y-1.5 py-0.5">
+                  <div className="text-xs font-extrabold text-slate-900 leading-snug">
+                    {idx + 1}. {s.name}
+                  </div>
+                  {s.category === "lodging" && (s.check_in || s.check_out) ? (
+                    <div className="flex items-center gap-1 text-[11px] font-mono font-bold text-purple-800">
+                      <Clock className="w-3 h-3 shrink-0" />
+                      <span>
+                        IN {s.check_in ? toTokyoHHMM(s.check_in) : "未定"} / OUT{" "}
+                        {s.check_out ? toTokyoHHMM(s.check_out) : "未定"}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-[11px] font-mono font-bold text-blue-700">
+                      <Clock className="w-3 h-3 shrink-0" />
+                      <span>
+                        {timing?.arrival && timing?.departure
+                          ? `${toTokyoHHMM(timing.arrival)} 〜 ${toTokyoHHMM(timing.departure)}（${s.stay_minutes}分）`
+                          : `滞在予定 ${s.stay_minutes}分`}
+                      </span>
+                    </div>
+                  )}
+                  {s.address && (
+                    <div className="text-[10px] text-neutral-500 line-clamp-2">{s.address}</div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onSelectSpot(s)}
+                    className="w-full mt-1 py-1.5 px-2.5 rounded-lg bg-slate-900 text-white text-[11px] font-bold hover:bg-slate-800 inline-flex items-center justify-center gap-1"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    <span>このスポットを編集</span>
+                  </button>
+                </div>
               </Popup>
             </Marker>
-          ) : null,
-        )}
+          );
+        })}
 
         {pending && <Marker position={[pending.lat, pending.lng]} icon={pendingIcon} />}
 

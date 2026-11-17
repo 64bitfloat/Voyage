@@ -905,6 +905,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           <TripMap
             day={activeDay}
             spots={daySpots}
+            timings={daySchedule?.timings}
             checkoutSpot={daySchedule?.checkoutSpot}
             onPickPlace={(pin) => openNewSpotModal(pin)}
             onSelectSpot={(spot) => setEditingSpot({ spot, isNew: false })}
