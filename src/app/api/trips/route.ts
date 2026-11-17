@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { CreateTripInput, initialDays } from "@/lib/model/types";
 import { getStore, parseBody, serverError } from "@/lib/server";
+import { hashPasscode } from "@/lib/server/passcode";
 
 /** 新しい旅行しおりを作成 → { id } */
 export async function POST(req: Request) {
@@ -8,8 +9,13 @@ export async function POST(req: Request) {
   if (!body.ok) return body.res;
   try {
     const id = crypto.randomUUID();
-    const { title, start_date, end_date } = body.data;
-    await getStore().createTrip({ id, title, start_date, end_date, notes: "" }, initialDays(start_date, end_date));
+    const { title, start_date, end_date, passcode } = body.data;
+    const passcodeHash = passcode ? hashPasscode(passcode) : null;
+    await getStore().createTrip(
+      { id, title, start_date, end_date, notes: "" },
+      initialDays(start_date, end_date),
+      passcodeHash,
+    );
     return NextResponse.json({ id }, { status: 201 });
   } catch (e) {
     return serverError(e);

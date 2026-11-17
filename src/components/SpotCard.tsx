@@ -12,40 +12,69 @@ import {
   AlertTriangle,
   MapPin,
   BedDouble,
+  Camera,
 } from "lucide-react";
-import type { SpotRow } from "@/lib/model/types";
+import type { PhotoRow, SpotRow } from "@/lib/model/types";
 import type { SpotTiming } from "@/lib/schedule/compute";
 import { toTokyoHHMM } from "@/lib/datetime";
 
-const CATEGORY_LABEL: Record<SpotRow["category"], { label: string; badge: string }> = {
-  sightseeing: { label: "観光", badge: "bg-blue-50 text-blue-700 border-blue-200" },
-  meal: { label: "食事", badge: "bg-orange-50 text-orange-700 border-orange-200" },
-  lodging: { label: "宿泊", badge: "bg-purple-50 text-purple-700 border-purple-200" },
-  transport: { label: "移動", badge: "bg-cyan-50 text-cyan-700 border-cyan-200" },
-  shopping: { label: "買い物", badge: "bg-pink-50 text-pink-700 border-pink-200" },
-  other: { label: "その他", badge: "bg-neutral-100 text-neutral-700 border-neutral-200" },
+const CATEGORY_STYLE: Record<
+  SpotRow["category"],
+  { label: string; dot: string; badge: string }
+> = {
+  sightseeing: {
+    label: "観光",
+    dot: "bg-blue-600 ring-blue-100",
+    badge: "bg-blue-50 text-blue-700 border-blue-200/80",
+  },
+  meal: {
+    label: "食事",
+    dot: "bg-orange-500 ring-orange-100",
+    badge: "bg-orange-50 text-orange-700 border-orange-200/80",
+  },
+  lodging: {
+    label: "宿泊",
+    dot: "bg-purple-600 ring-purple-100",
+    badge: "bg-purple-50 text-purple-700 border-purple-200/80",
+  },
+  transport: {
+    label: "移動",
+    dot: "bg-cyan-600 ring-cyan-100",
+    badge: "bg-cyan-50 text-cyan-700 border-cyan-200/80",
+  },
+  shopping: {
+    label: "買い物",
+    dot: "bg-pink-600 ring-pink-100",
+    badge: "bg-pink-50 text-pink-700 border-pink-200/80",
+  },
+  other: {
+    label: "その他",
+    dot: "bg-slate-600 ring-slate-100",
+    badge: "bg-slate-100 text-slate-700 border-slate-200/80",
+  },
 };
 
 const STATUS_BADGE: Record<SpotRow["status"], { label: string; cls: string }> = {
   decided: { label: "決まった", cls: "bg-emerald-600 text-white" },
   candidate: { label: "候補", cls: "bg-amber-500 text-white" },
-  undecided: { label: "未定", cls: "bg-neutral-400 text-white" },
+  undecided: { label: "未定", cls: "bg-slate-400 text-white" },
 };
 
 function ModeIcon({ mode }: { mode: SpotRow["transport_mode"] }) {
-  if (mode === "walk") return <Footprints className="w-3.5 h-3.5" />;
-  if (mode === "train") return <TrainFront className="w-3.5 h-3.5" />;
-  return <Car className="w-3.5 h-3.5" />;
+  if (mode === "walk") return <Footprints className="w-3.5 h-3.5 text-emerald-600" />;
+  if (mode === "train") return <TrainFront className="w-3.5 h-3.5 text-indigo-600" />;
+  return <Car className="w-3.5 h-3.5 text-blue-600" />;
 }
 
 interface SpotCardProps {
   index: number;
   spot: SpotRow;
   timing: SpotTiming | undefined;
+  photos?: PhotoRow[];
   onEdit: (spot: SpotRow) => void;
 }
 
-export default function SpotCard({ index, spot, timing, onEdit }: SpotCardProps) {
+export default function SpotCard({ index, spot, timing, photos = [], onEdit }: SpotCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: spot.id,
   });
@@ -55,122 +84,165 @@ export default function SpotCard({ index, spot, timing, onEdit }: SpotCardProps)
     transition,
   };
 
-  const cat = CATEGORY_LABEL[spot.category];
+  const cat = CATEGORY_STYLE[spot.category];
   const st = STATUS_BADGE[spot.status];
   const overrun = timing?.overrun_minutes ?? 0;
 
   return (
     <div ref={setNodeRef} style={style} className={isDragging ? "opacity-60 z-20" : ""}>
-      {/* 前のスポットからの移動バー */}
+      {/* Voyage風・前の地点からの移動コネクタピル */}
       {spot.transport_mode && (
-        <div className="flex items-center gap-2 pl-6 py-1 text-xs text-neutral-500">
-          <div className="w-0.5 h-4 bg-neutral-300" />
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700">
-            <ModeIcon mode={spot.transport_mode} />
-            {spot.transport_duration_minutes !== null
-              ? `${spot.transport_duration_minutes}分`
-              : "移動時間未設定"}
-            {spot.transport_distance_m !== null &&
-              ` (${(spot.transport_distance_m / 1000).toFixed(1)}km)`}
-          </span>
-          {timing && timing.wait_minutes > 0 && (
-            <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
-              予約まで待機 {timing.wait_minutes}分
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* 本体カード */}
-      <div
-        className={`rounded-2xl border p-3 bg-white shadow-xs transition flex items-start gap-2.5 ${
-          overrun > 0 ? "border-red-400 ring-2 ring-red-100" : "border-neutral-200 hover:border-neutral-300"
-        }`}
-      >
-        {/* ドラッグハンドル */}
-        <button
-          type="button"
-          aria-label="並び替え"
-          {...attributes}
-          {...listeners}
-          className="mt-1 p-1 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 touch-none cursor-grab active:cursor-grabbing"
-        >
-          <GripVertical className="w-4 h-4" />
-        </button>
-
-        {/* 順番バッジ + 時刻 */}
-        <div className="flex flex-col items-center shrink-0 w-12 pt-0.5">
-          <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
-            {index + 1}
-          </span>
-          {timing?.arrival && (
-            <div className="mt-1 text-[11px] font-mono text-neutral-800 leading-tight text-center">
-              <div className="font-bold">{toTokyoHHMM(timing.arrival)}</div>
-              <div className="text-neutral-400">↓</div>
-              <div>{timing.departure ? toTokyoHHMM(timing.departure) : ""}</div>
-            </div>
-          )}
-        </div>
-
-        {/* 詳細（クリックで編集） */}
-        <button
-          type="button"
-          onClick={() => onEdit(spot)}
-          className="flex-1 min-w-0 text-left space-y-1.5"
-        >
-          {/* 第3章: スケジュール破綻の赤い警告バッジ */}
-          {overrun > 0 && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-600 text-white text-xs font-bold shadow-xs">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              <span>⚠️ 移動が間に合いません：{overrun}分超過</span>
-            </div>
-          )}
-
-          <div className="flex items-center flex-wrap gap-1.5">
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${st.cls}`}>
-              {st.label}
-            </span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cat.badge}`}>
-              {cat.label}
-            </span>
-            {spot.is_main && (
-              <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
-                <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                メイン
+        <div className="grid grid-cols-[54px_20px_1fr] items-center py-1">
+          <div />
+          <div className="flex justify-center h-full">
+            <div className="w-0.5 h-7 border-l-2 border-dashed border-slate-300" />
+          </div>
+          <div className="flex items-center flex-wrap gap-1.5 pl-1">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white border border-slate-200/90 shadow-2xs text-[11px] font-semibold text-slate-700">
+              <ModeIcon mode={spot.transport_mode} />
+              <span>
+                {spot.transport_duration_minutes !== null
+                  ? `${spot.transport_duration_minutes}分`
+                  : "移動時間未設定"}
               </span>
-            )}
-            <span className="inline-flex items-center gap-0.5 text-[11px] text-neutral-500">
-              <Clock className="w-3 h-3" />
-              滞在{spot.stay_minutes}分
+              {spot.transport_distance_m !== null && (
+                <span className="text-slate-400 font-normal">
+                  ({(spot.transport_distance_m / 1000).toFixed(1)}km)
+                </span>
+              )}
             </span>
-            {spot.is_fixed && spot.reservation_time && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                予約 {toTokyoHHMM(spot.reservation_time)} 固定
+            {timing && timing.wait_minutes > 0 && (
+              <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                予約まで待機 {timing.wait_minutes}分
               </span>
             )}
           </div>
+        </div>
+      )}
 
-          <div className="text-sm font-bold text-neutral-900 truncate">{spot.name}</div>
-
-          {spot.address && (
-            <div className="flex items-center gap-1 text-xs text-neutral-500 truncate">
-              <MapPin className="w-3 h-3 shrink-0" />
-              <span className="truncate">{spot.address}</span>
-            </div>
-          )}
-
-          {spot.category === "lodging" && (spot.check_in || spot.check_out) && (
-            <div className="inline-flex items-center gap-1.5 text-xs text-purple-800 bg-purple-50 px-2 py-0.5 rounded-lg">
-              <BedDouble className="w-3.5 h-3.5" />
-              <span>
-                IN {spot.check_in ? toTokyoHHMM(spot.check_in) : "未定"} / OUT{" "}
-                {spot.check_out ? toTokyoHHMM(spot.check_out) : "未定"}
+      {/* クロノグラフ・タイムライン行（左: 時刻軸 / 中: ピン番号ノード / 右: リッチカード） */}
+      <div className="grid grid-cols-[54px_20px_1fr] items-stretch gap-x-1">
+        {/* 左カラム: 到着・出発予定時刻 */}
+        <div className="flex flex-col justify-between py-2.5 pr-1 text-right font-mono">
+          {timing?.arrival ? (
+            <>
+              <span
+                className={`text-xs font-extrabold tracking-tight ${
+                  overrun > 0 ? "text-red-600" : "text-slate-900"
+                }`}
+              >
+                {toTokyoHHMM(timing.arrival)}
               </span>
-            </div>
+              {timing.departure && (
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {toTokyoHHMM(timing.departure)}
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="text-[11px] text-slate-300">--:--</span>
           )}
+        </div>
 
-          {spot.memo && <p className="text-xs text-neutral-600 line-clamp-2">{spot.memo}</p>}
-        </button>
+        {/* 中央カラム: 縦ライン + 番号付きノード */}
+        <div className="relative flex flex-col items-center">
+          <div className="w-0.5 flex-1 bg-slate-200" />
+          <div
+            className={`w-6 h-6 rounded-full text-white text-[11px] font-extrabold flex items-center justify-center ring-4 shadow-xs shrink-0 ${cat.dot}`}
+          >
+            {index + 1}
+          </div>
+          <div className="w-0.5 flex-1 bg-slate-200" />
+        </div>
+
+        {/* 右カラム: スポットカード本体 */}
+        <div className="py-1 pl-1.5 min-w-0">
+          <div
+            className={`rounded-2xl border p-3 bg-white shadow-xs transition flex items-start gap-2 ${
+              overrun > 0
+                ? "border-red-400 ring-2 ring-red-100 bg-red-50/20"
+                : "border-slate-200/90 hover:border-slate-300"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => onEdit(spot)}
+              className="flex-1 min-w-0 text-left space-y-1.5"
+            >
+              {/* 第3章: スケジュール破綻の赤い警告バッジ */}
+              {overrun > 0 && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-red-600 text-white text-xs font-bold shadow-xs">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>⚠️ 移動が間に合いません：{overrun}分超過</span>
+                </div>
+              )}
+
+              <div className="flex items-center flex-wrap gap-1.5">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${st.cls}`}>
+                  {st.label}
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cat.badge}`}
+                >
+                  {cat.label}
+                </span>
+                {spot.is_main && (
+                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                    <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                    メイン
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 font-medium">
+                  <Clock className="w-3 h-3" />
+                  {spot.stay_minutes}分
+                </span>
+                {spot.is_fixed && spot.reservation_time && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    予約 {toTokyoHHMM(spot.reservation_time)} 固定
+                  </span>
+                )}
+                {photos.length > 0 && (
+                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                    <Camera className="w-3 h-3" />
+                    {photos.length}
+                  </span>
+                )}
+              </div>
+
+              <div className="text-sm font-extrabold text-slate-900 truncate">{spot.name}</div>
+
+              {spot.address && (
+                <div className="flex items-center gap-1 text-xs text-slate-500 truncate">
+                  <MapPin className="w-3 h-3 shrink-0 text-slate-400" />
+                  <span className="truncate">{spot.address}</span>
+                </div>
+              )}
+
+              {spot.category === "lodging" && (spot.check_in || spot.check_out) && (
+                <div className="inline-flex items-center gap-1.5 text-xs text-purple-800 bg-purple-50 px-2.5 py-0.5 rounded-lg font-medium">
+                  <BedDouble className="w-3.5 h-3.5" />
+                  <span>
+                    IN {spot.check_in ? toTokyoHHMM(spot.check_in) : "未定"} / OUT{" "}
+                    {spot.check_out ? toTokyoHHMM(spot.check_out) : "未定"}
+                  </span>
+                </div>
+              )}
+
+              {spot.memo && <p className="text-xs text-slate-600 line-clamp-2">{spot.memo}</p>}
+            </button>
+
+            {/* ドラッグハンドル（右端にスッキリ配置） */}
+            <button
+              type="button"
+              aria-label="並び替え"
+              {...attributes}
+              {...listeners}
+              className="p-1.5 rounded-xl text-slate-300 hover:text-slate-600 hover:bg-slate-100 touch-none cursor-grab active:cursor-grabbing shrink-0"
+            >
+              <GripVertical className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

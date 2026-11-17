@@ -1,62 +1,170 @@
-import type { DayRow, SpotRow, TripDoc, TripRow } from "../model/types";
+import type {
+  BelongingRow,
+  CostRow,
+  DayRow,
+  DishRow,
+  ParticipantRow,
+  PhotoRow,
+  SpotRow,
+  TripDoc,
+  TripRow,
+} from "../model/types";
+import { verifyPasscode } from "./passcode";
 import type { TripStore } from "./store";
 
+interface StoredTrip {
+  doc: TripDoc;
+  passcodeHash: string | null;
+}
+
 /** ローカル開発用のメモリ実装（HMRでも消えないよう globalThis に保持） */
-const g = globalThis as unknown as { __voyageMem?: Map<string, TripDoc> };
-const db = (g.__voyageMem ??= new Map<string, TripDoc>());
+const g = globalThis as unknown as { __voyageMemV3?: Map<string, StoredTrip> };
+const db = (g.__voyageMemV3 ??= new Map<string, StoredTrip>());
 
 export class MemoryStore implements TripStore {
   readonly kind = "memory" as const;
 
-  async getTripDoc(tripId: string) {
-    const doc = db.get(tripId);
-    return doc ? structuredClone(doc) : null;
+  async getTripDoc(tripId: string): Promise<TripDoc | null> {
+    const entry = db.get(tripId);
+    return entry ? structuredClone(entry.doc) : null;
   }
 
-  async createTrip(trip: Omit<TripRow, "has_passcode">, days: DayRow[]) {
-    db.set(trip.id, { trip: { ...trip, has_passcode: false }, days: structuredClone(days), spots: [] });
+  async createTrip(
+    trip: Omit<TripRow, "has_passcode">,
+    days: DayRow[],
+    passcodeHash?: string | null,
+  ) {
+    db.set(trip.id, {
+      doc: {
+        trip: { ...trip, has_passcode: !!passcodeHash },
+        days: structuredClone(days),
+        spots: [],
+        participants: [],
+        costs: [],
+        belongings: [],
+        dishes: [],
+        photos: [],
+      },
+      passcodeHash: passcodeHash ?? null,
+    });
+  }
+
+  async verifyTripPasscode(tripId: string, passcode: string): Promise<boolean> {
+    const entry = db.get(tripId);
+    if (!entry) return false;
+    return verifyPasscode(passcode, entry.passcodeHash);
   }
 
   async updateTrip(tripId: string, patch: Partial<Pick<TripRow, "title" | "notes">>) {
-    const doc = db.get(tripId);
-    if (doc) Object.assign(doc.trip, patch);
+    const entry = db.get(tripId);
+    if (entry) Object.assign(entry.doc.trip, patch);
   }
 
   async upsertDay(tripId: string, day: DayRow) {
-    const doc = db.get(tripId);
-    if (!doc) return;
-    const i = doc.days.findIndex((d) => d.day_index === day.day_index);
-    if (i >= 0) doc.days[i] = day;
-    else doc.days.push(day);
-    doc.days.sort((a, b) => a.day_index - b.day_index);
+    const entry = db.get(tripId);
+    if (!entry) return;
+    const i = entry.doc.days.findIndex((d) => d.day_index === day.day_index);
+    if (i >= 0) entry.doc.days[i] = day;
+    else entry.doc.days.push(day);
+    entry.doc.days.sort((a, b) => a.day_index - b.day_index);
   }
 
   async createSpot(tripId: string, spot: SpotRow) {
-    const doc = db.get(tripId);
-    if (doc && !doc.spots.some((s) => s.id === spot.id)) doc.spots.push(spot);
+    const entry = db.get(tripId);
+    if (entry && !entry.doc.spots.some((s) => s.id === spot.id)) entry.doc.spots.push(spot);
   }
 
   async updateSpot(tripId: string, spotId: string, patch: Partial<SpotRow>) {
-    const s = db.get(tripId)?.spots.find((x) => x.id === spotId);
+    const s = db.get(tripId)?.doc.spots.find((x) => x.id === spotId);
     if (!s) return false;
     Object.assign(s, patch);
     return true;
   }
 
   async deleteSpot(tripId: string, spotId: string) {
-    const doc = db.get(tripId);
-    if (!doc) return false;
-    const before = doc.spots.length;
-    doc.spots = doc.spots.filter((s) => s.id !== spotId);
-    return doc.spots.length < before;
+    const entry = db.get(tripId);
+    if (!entry) return false;
+    const before = entry.doc.spots.length;
+    entry.doc.spots = entry.doc.spots.filter((s) => s.id !== spotId);
+    entry.doc.photos = entry.doc.photos.filter((p) => p.spot_id !== spotId);
+    return entry.doc.spots.length < before;
   }
 
   async reorderSpots(tripId: string, dayIndex: number, orderedIds: string[]) {
-    const doc = db.get(tripId);
-    if (!doc) return;
+    const entry = db.get(tripId);
+    if (!entry) return;
     orderedIds.forEach((id, i) => {
-      const s = doc.spots.find((x) => x.id === id && x.day_index === dayIndex);
+      const s = entry.doc.spots.find((x) => x.id === id && x.day_index === dayIndex);
       if (s) s.sort_order = i;
     });
+  }
+
+  async upsertParticipant(tripId: string, participant: ParticipantRow) {
+    const entry = db.get(tripId);
+    if (!entry) return;
+    const i = entry.doc.participants.findIndex((p) => p.id === participant.id);
+    if (i >= 0) entry.doc.participants[i] = participant;
+    else entry.doc.participants.push(participant);
+  }
+
+  async deleteParticipant(tripId: string, participantId: string) {
+    const entry = db.get(tripId);
+    if (!entry) return;
+    entry.doc.participants = entry.doc.participants.filter((p) => p.id !== participantId);
+  }
+
+  async upsertCost(tripId: string, cost: CostRow) {
+    const entry = db.get(tripId);
+    if (!entry) return;
+    const i = entry.doc.costs.findIndex((c) => c.id === cost.id);
+    if (i >= 0) entry.doc.costs[i] = cost;
+    else entry.doc.costs.push(cost);
+  }
+
+  async deleteCost(tripId: string, costId: string) {
+    const entry = db.get(tripId);
+    if (!entry) return;
+    entry.doc.costs = entry.doc.costs.filter((c) => c.id !== costId);
+  }
+
+  async upsertBelonging(tripId: string, belonging: BelongingRow) {
+    const entry = db.get(tripId);
+    if (!entry) return;
+    const i = entry.doc.belongings.findIndex((b) => b.id === belonging.id);
+    if (i >= 0) entry.doc.belongings[i] = belonging;
+    else entry.doc.belongings.push(belonging);
+  }
+
+  async deleteBelonging(tripId: string, belongingId: string) {
+    const entry = db.get(tripId);
+    if (!entry) return;
+    entry.doc.belongings = entry.doc.belongings.filter((b) => b.id !== belongingId);
+  }
+
+  async upsertDish(tripId: string, dish: DishRow) {
+    const entry = db.get(tripId);
+    if (!entry) return;
+    const i = entry.doc.dishes.findIndex((d) => d.id === dish.id);
+    if (i >= 0) entry.doc.dishes[i] = dish;
+    else entry.doc.dishes.push(dish);
+  }
+
+  async deleteDish(tripId: string, dishId: string) {
+    const entry = db.get(tripId);
+    if (!entry) return;
+    entry.doc.dishes = entry.doc.dishes.filter((d) => d.id !== dishId);
+  }
+
+  async createPhoto(tripId: string, photo: PhotoRow) {
+    const entry = db.get(tripId);
+    if (entry && !entry.doc.photos.some((p) => p.id === photo.id)) {
+      entry.doc.photos.push(photo);
+    }
+  }
+
+  async deletePhoto(tripId: string, photoId: string) {
+    const entry = db.get(tripId);
+    if (!entry) return;
+    entry.doc.photos = entry.doc.photos.filter((p) => p.id !== photoId);
   }
 }

@@ -6,8 +6,10 @@
  */
 import { z } from "zod";
 import {
+  CostCategory,
   DateSchema,
   DateTimeSchema,
+  DishStatus,
   IdSchema,
   LatSchema,
   LngSchema,
@@ -15,7 +17,14 @@ import {
   SpotStatus,
   TimeSchema,
   TransportMode,
+  YenSchema,
 } from "../export/schema";
+
+export const PasscodeInput = z
+  .string()
+  .regex(/^\d{4}$/, "4桁の数字で入力してください")
+  .nullable()
+  .optional();
 
 export const TripRowSchema = z.object({
   id: IdSchema,
@@ -63,11 +72,98 @@ export const SpotRowSchema = z.object({
 });
 export type SpotRow = z.infer<typeof SpotRowSchema>;
 
+/* ------------------------------------------------------------------ */
+/* 段階3 エンティティ（参加者・費用・持ち物・料理・写真）              */
+/* ------------------------------------------------------------------ */
+
+export const ParticipantRowSchema = z.object({
+  id: IdSchema,
+  full_name: z.string().max(100),
+  nickname: z.string().max(50),
+  role: z.string().max(100),
+  sort_order: z.number().int().default(0),
+});
+export type ParticipantRow = z.infer<typeof ParticipantRowSchema>;
+
+export const CostBreakdownRowSchema = z.object({
+  consumer_participant_id: IdSchema.nullable(),
+  consumer_full_name: z.string().max(100),
+  amount_jpy: YenSchema,
+  note: z.string().max(200),
+});
+export type CostBreakdownRow = z.infer<typeof CostBreakdownRowSchema>;
+
+export const CostRowSchema = z.object({
+  id: IdSchema,
+  title: z.string().max(200),
+  category: CostCategory,
+  total_paid_amount_jpy: YenSchema,
+  payer_participant_id: IdSchema.nullable(),
+  payer_full_name: z.string().max(100).nullable(),
+  related_spot_id: IdSchema.nullable(),
+  related_day_index: z.number().int().nonnegative().nullable(),
+  is_settled: z.boolean(),
+  note: z.string().max(1000),
+  individual_breakdown: z.array(CostBreakdownRowSchema),
+});
+export type CostRow = z.infer<typeof CostRowSchema>;
+
+export const BelongingRowSchema = z.object({
+  id: IdSchema,
+  name: z.string().max(200),
+  is_needed: z.boolean(),
+  is_prepared: z.boolean(),
+  assignee_participant_id: IdSchema.nullable(),
+  assignee_full_name: z.string().max(100).nullable(),
+  note: z.string().max(500),
+  sort_order: z.number().int().default(0),
+});
+export type BelongingRow = z.infer<typeof BelongingRowSchema>;
+
+export const DishIngredientRowSchema = z.object({
+  name: z.string().max(100),
+  quantity: z.number().nonnegative().nullable(),
+  unit: z.string().max(50),
+  ingredient_name: z.string().max(100),
+});
+export type DishIngredientRow = z.infer<typeof DishIngredientRowSchema>;
+
+export const DishRowSchema = z.object({
+  id: IdSchema,
+  name: z.string().max(200),
+  status: DishStatus,
+  related_day_index: z.number().int().nonnegative().nullable(),
+  ingredients: z.array(DishIngredientRowSchema),
+  sort_order: z.number().int().default(0),
+});
+export type DishRow = z.infer<typeof DishRowSchema>;
+
+export const PhotoRowSchema = z
+  .object({
+    id: IdSchema,
+    spot_id: IdSchema.nullable(),
+    day_index: z.number().int().nonnegative().nullable(),
+    /** data URL または https URL（エクスポート時は z.url() でどちらでも検証を通る） */
+    url: z.url(),
+    caption: z.string().max(500),
+    photographer_nickname: z.string().max(50),
+    taken_at: DateTimeSchema.nullable(),
+  })
+  .refine((p) => p.spot_id !== null || p.day_index !== null, {
+    message: "写真は必ずスポットまたは日程のいずれかに紐付けてください",
+  });
+export type PhotoRow = z.infer<typeof PhotoRowSchema>;
+
 /** 1旅行分のまとまり（クライアントが保持する状態） */
 export interface TripDoc {
   trip: TripRow;
   days: DayRow[];
   spots: SpotRow[];
+  participants: ParticipantRow[];
+  costs: CostRow[];
+  belongings: BelongingRow[];
+  dishes: DishRow[];
+  photos: PhotoRow[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -79,6 +175,7 @@ export const CreateTripInput = z
     title: z.string().trim().min(1, "旅行名を入力してください").max(200),
     start_date: DateSchema.nullable(),
     end_date: DateSchema.nullable(),
+    passcode: PasscodeInput,
   })
   .refine((v) => !v.start_date || !v.end_date || v.start_date <= v.end_date, {
     message: "終了日は開始日以降にしてください",
@@ -100,6 +197,10 @@ export const UpdateSpotInput = SpotRowSchema.omit({ id: true, day_index: true })
 export const ReorderSpotsInput = z.object({
   day_index: z.number().int().nonnegative(),
   ordered_ids: z.array(IdSchema).max(500),
+});
+
+export const VerifyPasscodeInput = z.object({
+  passcode: z.string().regex(/^\d{4}$/, "4桁の数字を入力してください"),
 });
 
 /* ------------------------------------------------------------------ */
