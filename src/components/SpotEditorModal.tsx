@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import {
   X,
-  Calculator,
   Star,
   Link2,
   Sparkles,
@@ -54,13 +53,6 @@ const STATUSES: { value: SpotRow["status"]; label: string; desc: string }[] = [
   { value: "decided", label: "決まった", desc: "確定した目的地" },
   { value: "candidate", label: "候補", desc: "検討中の候補" },
   { value: "undecided", label: "未定", desc: "まだ未定" },
-];
-
-const MODES: { value: NonNullable<SpotRow["transport_mode"]>; label: string }[] = [
-  { value: "car", label: "車" },
-  { value: "walk", label: "徒歩" },
-  { value: "train", label: "電車/バス" },
-  { value: "manual", label: "手動入力" },
 ];
 
 function addMinutesHHMM(hhmm: string, mins: number): string {
@@ -198,8 +190,6 @@ export default function SpotEditorModal({
   const [hasCheckInOut, setHasCheckInOut] = useState<boolean>(
     initial.category === "lodging" || initial.check_in !== null || initial.check_out !== null,
   );
-  const [calcBusy, setCalcBusy] = useState(false);
-  const [calcErr, setCalcErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   // 選択中の Day における「1つ前のスポット」と「前の出発予定時刻」を算出
@@ -313,14 +303,6 @@ export default function SpotEditorModal({
     spot.transport_duration_minutes,
   ]);
 
-  const canAutoRoute =
-    prevCoords !== null &&
-    ((spot.lat !== null && spot.lng !== null) ||
-      Boolean(spot.address?.trim() || spot.name.trim())) &&
-    (spot.transport_mode === "car" ||
-      spot.transport_mode === "walk" ||
-      spot.transport_mode === "train");
-
   async function handleSelectDay(newDayIdx: number) {
     const targetDay = days.find((d) => d.day_index === newDayIdx);
     const targetDaySpots = spotsOfDay(allSpots, newDayIdx).filter((s) => s.id !== spot.id);
@@ -416,57 +398,6 @@ export default function SpotEditorModal({
       setResolveMsg("通信エラーが発生しました");
     } finally {
       setResolvingUrl(false);
-    }
-  }
-
-  async function handleAutoRoute(
-    modeOverride?: "car" | "walk" | "train",
-    avoidTollsOverride?: boolean,
-  ) {
-    const mode =
-      modeOverride ??
-      (spot.transport_mode === "walk"
-        ? "walk"
-        : spot.transport_mode === "train"
-          ? "train"
-          : "car");
-    const avoidTolls = avoidTollsOverride ?? Boolean(bhRule.avoidTolls);
-    if (!prevCoords) return;
-    setCalcBusy(true);
-    setCalcErr(null);
-    try {
-      let targetLat = spot.lat;
-      let targetLng = spot.lng;
-      if (targetLat === null || targetLng === null) {
-        const geo = await geocodeSpot(spot.address, spot.name);
-        if (!geo) {
-          setCalcErr("スポットの座標を取得できませんでした。住所やGoogleマップリンクを確認してください。");
-          return;
-        }
-        targetLat = geo.lat;
-        targetLng = geo.lng;
-        setSpot((prev) => ({
-          ...prev,
-          lat: geo.lat,
-          lng: geo.lng,
-        }));
-      }
-      const r = await getRouteProvider().route(
-        prevCoords,
-        { lat: targetLat, lng: targetLng },
-        mode,
-        { avoidTolls },
-      );
-      setSpot((prev) => ({
-        ...prev,
-        transport_mode: mode,
-        transport_duration_minutes: r.duration_minutes,
-        transport_distance_m: r.distance_m,
-      }));
-    } catch (e) {
-      setCalcErr(e instanceof Error ? e.message : "ルート計算に失敗しました");
-    } finally {
-      setCalcBusy(false);
     }
   }
 
@@ -1150,144 +1081,9 @@ export default function SpotEditorModal({
             </div>
           )}
 
-          {/* 前の地点からの移動手段・移動時間 */}
-          <div className="rounded-xl bg-neutral-50 border border-neutral-200 p-3 space-y-2.5">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="text-xs font-bold text-neutral-800">前の地点からの移動</span>
-              <div className="flex items-center gap-1.5">
-                {prevCoords && spot.lat !== null && spot.lng !== null && (
-                  <a
-                    href={`https://www.google.com/maps/dir/?api=1&origin=${prevCoords.lat},${prevCoords.lng}&destination=${spot.lat},${spot.lng}&travelmode=${
-                      spot.transport_mode === "walk"
-                        ? "walking"
-                        : spot.transport_mode === "train"
-                          ? "transit"
-                          : "driving"
-                    }${spot.transport_mode === "car" && bhRule.avoidTolls ? "&dir_action=navigate&avoid=tolls,highways" : ""}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-neutral-300 text-[11px] font-bold text-neutral-700 hover:bg-neutral-100"
-                  >
-                    Googleマップ↗
-                  </a>
-                )}
-                {canAutoRoute && (
-                  <button
-                    type="button"
-                    disabled={calcBusy}
-                    onClick={() => handleAutoRoute()}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    <Calculator className="w-3.5 h-3.5" />
-                    {calcBusy ? "計算中..." : "自動計算"}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-4 gap-1.5">
-              {MODES.map((m) => (
-                <button
-                  key={m.value}
-                  type="button"
-                  onClick={() => {
-                    setSpot((s) => ({ ...s, transport_mode: m.value }));
-                    if (
-                      (m.value === "car" || m.value === "walk" || m.value === "train") &&
-                      prevCoords &&
-                      spot.lat !== null &&
-                      spot.lng !== null
-                    ) {
-                      void handleAutoRoute(m.value);
-                    }
-                  }}
-                  className={`py-1.5 rounded-lg text-xs font-medium border ${
-                    spot.transport_mode === m.value
-                      ? "bg-neutral-900 text-white border-neutral-900"
-                      : "bg-white text-neutral-700 border-neutral-200"
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
-
-            {/* 車移動時: 高速道路を使う / 下道のみ（有料回避）切替 */}
-            {spot.transport_mode === "car" && (
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBhRule((prev) => ({ ...prev, avoidTolls: false }));
-                    if (prevCoords && spot.lat !== null && spot.lng !== null) {
-                      void handleAutoRoute("car", false);
-                    }
-                  }}
-                  className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition ${
-                    !bhRule.avoidTolls
-                      ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
-                      : "bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-100"
-                  }`}
-                >
-                  🛣️ 高速・有料道路を使う
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBhRule((prev) => ({ ...prev, avoidTolls: true }));
-                    if (prevCoords && spot.lat !== null && spot.lng !== null) {
-                      void handleAutoRoute("car", true);
-                    }
-                  }}
-                  className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition ${
-                    bhRule.avoidTolls
-                      ? "bg-amber-600 text-white border-amber-600 shadow-2xs"
-                      : "bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-100"
-                  }`}
-                >
-                  🚗 下道のみ（高速回避）
-                </button>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[11px] text-neutral-600 mb-1">移動時間（分）</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={spot.transport_duration_minutes ?? ""}
-                  onChange={(e) =>
-                    setSpot((s) => ({
-                      ...s,
-                      transport_duration_minutes:
-                        e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
-                    }))
-                  }
-                  placeholder="例: 30"
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-300 bg-white text-xs"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] text-neutral-600 mb-1">距離（m・任意）</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={spot.transport_distance_m ?? ""}
-                  onChange={(e) =>
-                    setSpot((s) => ({
-                      ...s,
-                      transport_distance_m:
-                        e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
-                    }))
-                  }
-                  placeholder="自動算出"
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-300 bg-white text-xs"
-                />
-              </div>
-            </div>
-            {calcErr && <p className="text-xs text-red-600">{calcErr}</p>}
-          </div>
+          <p className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2">
+            ※ 区間の移動手段（車・高速/下道・徒歩・電車）は、タイムライン上のスポット間にある移動ピルをタップして編集できます（初期値: 車・高速あり）。
+          </p>
 
           {/* メモ */}
           <div>

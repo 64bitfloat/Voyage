@@ -38,6 +38,8 @@ export interface BusinessHoursRule {
   targetTime?: string | null;
   /** 車移動時に高速道路・有料道路を使わない（下道のみ）か */
   avoidTolls?: boolean;
+  /** この移動設定・計算結果がどの直前地点（"day:1" / "spot:<id>"）からのものか */
+  routeFromKey?: string | null;
   /**
    * 「どっちか1つ」＆「時間帯・日程振り分け」用の枠タグ（複数選択可）
    * 同じ id を持つ枠タグには、自動編成時に最大1スポットだけが選ばれる
@@ -232,6 +234,7 @@ export function serializeBusinessHours(rule: BusinessHoursRule): string {
     !rule.policyCheckOut &&
     !rule.targetTime &&
     !rule.avoidTolls &&
+    !rule.routeFromKey &&
     slots.length === 0
   ) {
     return "";
@@ -246,6 +249,7 @@ export function serializeBusinessHours(rule: BusinessHoursRule): string {
     policyCheckOut: rule.policyCheckOut ?? null,
     targetTime: rule.targetTime ?? null,
     avoidTolls: rule.avoidTolls ?? false,
+    routeFromKey: rule.routeFromKey ?? null,
     slotTags: slots,
   });
 }
@@ -259,6 +263,7 @@ export function deserializeBusinessHours(stored: string | null | undefined): Bus
       rawText: "",
       targetTime: null,
       avoidTolls: false,
+      routeFromKey: null,
       slotTags: [],
     };
   try {
@@ -272,6 +277,7 @@ export function deserializeBusinessHours(stored: string | null | undefined): Bus
       policyCheckOut?: string | null;
       targetTime?: string | null;
       avoidTolls?: boolean;
+      routeFromKey?: string | null;
       slotTags?: ChoiceSlotTag[];
     };
     if (obj && obj.bh === 1) {
@@ -284,6 +290,7 @@ export function deserializeBusinessHours(stored: string | null | undefined): Bus
         policyCheckOut: obj.policyCheckOut ?? null,
         targetTime: obj.targetTime ?? null,
         avoidTolls: Boolean(obj.avoidTolls),
+        routeFromKey: obj.routeFromKey ?? null,
         slotTags: Array.isArray(obj.slotTags) ? obj.slotTags : [],
       };
     }
@@ -297,6 +304,7 @@ export function deserializeBusinessHours(stored: string | null | undefined): Bus
     rawText: "",
     targetTime: null,
     avoidTolls: false,
+    routeFromKey: null,
     slotTags: [],
   };
 }

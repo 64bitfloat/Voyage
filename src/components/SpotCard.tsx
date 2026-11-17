@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   MapPin,
   BedDouble,
+  Pencil,
 } from "lucide-react";
 import type { SpotRow } from "@/lib/model/types";
 import type { SpotTiming } from "@/lib/schedule/compute";
@@ -82,9 +83,10 @@ interface SpotCardProps {
   dayDate: string | null;
   timing: SpotTiming | undefined;
   onEdit: (spot: SpotRow) => void;
+  onEditLeg?: (spot: SpotRow) => void;
 }
 
-export default function SpotCard({ index, spot, dayDate, timing, onEdit }: SpotCardProps) {
+export default function SpotCard({ index, spot, dayDate, timing, onEdit, onEditLeg }: SpotCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: spot.id,
   });
@@ -113,18 +115,32 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit }: SpotC
         );
   const hasBhInfo = Boolean(bhRule.open && bhRule.close) || bhRule.closedDays.length > 0;
 
+  const effectiveMode = spot.transport_mode ?? "car";
+
   return (
     <div ref={setNodeRef} style={style} className={isDragging ? "opacity-60 z-20" : ""}>
-      {/* Voyage風・前の地点からの移動コネクタピル */}
-      {spot.transport_mode && (
+      {/* Voyage風・前の地点からの移動コネクタピル（タップで移動区間を編集） */}
+      {(spot.day_index >= 1 || spot.transport_mode) && (
         <div className="grid grid-cols-[54px_20px_1fr] items-center py-1">
           <div />
           <div className="flex justify-center h-full">
             <div className="w-0.5 h-7 border-l-2 border-dashed border-slate-300" />
           </div>
           <div className="flex items-center flex-wrap gap-1.5 pl-1">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white border border-slate-200/90 shadow-2xs text-[11px] font-semibold text-slate-700">
-              <ModeIcon mode={spot.transport_mode} />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditLeg?.(spot);
+              }}
+              title="この区間の移動手段・高速設定を編集"
+              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white border border-slate-200/90 shadow-2xs text-[11px] font-semibold text-slate-700 ${
+                onEditLeg
+                  ? "hover:border-blue-400 hover:bg-blue-50/50 active:scale-[0.98] transition cursor-pointer"
+                  : ""
+              }`}
+            >
+              <ModeIcon mode={effectiveMode} />
               <span>
                 {spot.transport_duration_minutes !== null
                   ? `${spot.transport_duration_minutes}分`
@@ -135,7 +151,7 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit }: SpotC
                   ({(spot.transport_distance_m / 1000).toFixed(1)}km)
                 </span>
               )}
-              {spot.transport_mode === "car" && (
+              {effectiveMode === "car" && (
                 <span
                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
                     bhRule.avoidTolls
@@ -146,7 +162,8 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit }: SpotC
                   {bhRule.avoidTolls ? "下道" : "高速"}
                 </span>
               )}
-            </span>
+              {onEditLeg && <Pencil className="w-2.5 h-2.5 text-slate-400 ml-0.5" />}
+            </button>
             {timing && timing.wait_minutes > 0 && (
               <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
                 予約まで待機 {timing.wait_minutes}分

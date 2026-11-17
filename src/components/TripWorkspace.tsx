@@ -62,6 +62,7 @@ import { toTokyoDate, toTokyoHHMM } from "@/lib/datetime";
 import type { PendingPin } from "./TripMap";
 import SpotCard from "./SpotCard";
 import SpotEditorModal from "./SpotEditorModal";
+import LegEditorModal from "./LegEditorModal";
 import ParticipantsPanel from "./ParticipantsPanel";
 import CostsPanel from "./CostsPanel";
 import PrepAndDishesPanel from "./PrepAndDishesPanel";
@@ -187,6 +188,12 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   const [mainTab, setMainTab] = useState<MainTab>("itinerary");
   const [activeDayIdx, setActiveDayIdx] = useState<number>(1);
   const [editingSpot, setEditingSpot] = useState<{ spot: SpotRow; isNew: boolean } | null>(null);
+  const [editingLeg, setEditingLeg] = useState<{
+    spot: SpotRow;
+    fromLabel: string;
+    fromCoords: LatLng | null;
+    routeFromKey: string;
+  } | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
@@ -306,8 +313,19 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       const depLat = day.departure_lat ?? co?.lat ?? null;
       const depLng = day.departure_lng ?? co?.lng ?? null;
 
-      // 1. まず即座に距離ベースの概算値で全区間を更新（古い並び順の距離が残るのを防ぐ）
+      // 1. まず即座に距離ベースの概算値で全区間を更新（前後ペアが変わった区間はデフォルト「車・高速あり」にリセット）
       const instant: SpotRow[] = ordered.map((s, i) => {
+        const expectedFromKey = i === 0 ? `day:${day.day_index}` : `spot:${ordered[i - 1].id}`;
+        const bh = deserializeBusinessHours(s.transport_note);
+        const pairChanged = Boolean(bh.routeFromKey && bh.routeFromKey !== expectedFromKey);
+        const effectiveMode = pairChanged ? "car" : (s.transport_mode ?? "car");
+        const effectiveAvoidTolls = pairChanged ? false : Boolean(bh.avoidTolls);
+        const nextNote = serializeBusinessHours({
+          ...bh,
+          avoidTolls: effectiveAvoidTolls,
+          routeFromKey: expectedFromKey,
+        });
+
         const prev: LatLng | null =
           i === 0
             ? depLat !== null && depLng !== null
@@ -318,19 +336,19 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               : null;
 
         const isRoutable =
-          s.transport_mode === "car" || s.transport_mode === "walk" || s.transport_mode === "train";
+          effectiveMode === "car" || effectiveMode === "walk" || effectiveMode === "train";
         if (prev && s.lat !== null && s.lng !== null && isRoutable) {
-          const avoidTolls =
-            s.transport_mode === "car" && Boolean(deserializeBusinessHours(s.transport_note).avoidTolls);
           const est = estimateRouteFallback(
             prev,
             { lat: s.lat, lng: s.lng },
-            s.transport_mode as "car" | "walk" | "train",
-            avoidTolls,
+            effectiveMode as "car" | "walk" | "train",
+            effectiveMode === "car" && effectiveAvoidTolls,
           );
           return {
             ...s,
             sort_order: i,
+            transport_mode: effectiveMode,
+            transport_note: nextNote,
             transport_duration_minutes: est.duration_minutes,
             transport_distance_m: est.distance_m,
           };
@@ -340,11 +358,18 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           return {
             ...s,
             sort_order: i,
+            transport_mode: effectiveMode,
+            transport_note: nextNote,
             transport_duration_minutes: null,
             transport_distance_m: null,
           };
         }
-        return { ...s, sort_order: i };
+        return {
+          ...s,
+          sort_order: i,
+          transport_mode: effectiveMode,
+          transport_note: nextNote,
+        };
       });
 
       setDoc((prev) => ({
@@ -401,21 +426,28 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               ...(latLngPatched ? { lat: s.lat, lng: s.lng } : {}),
+              transport_mode: nextSpot.transport_mode,
+              transport_note: nextSpot.transport_note,
               transport_duration_minutes: r.duration_minutes,
               transport_distance_m: r.distance_m,
             }),
           });
         } else {
           updated.push(s);
+          const orig = ordered[i];
+          const metaChanged =
+            orig.transport_mode !== s.transport_mode || orig.transport_note !== s.transport_note;
           const hadStale =
             isRoutable &&
-            (ordered[i].transport_duration_minutes !== null || ordered[i].transport_distance_m !== null);
-          if (latLngPatched || hadStale) {
+            (orig.transport_duration_minutes !== null || orig.transport_distance_m !== null);
+          if (latLngPatched || hadStale || metaChanged) {
             await fetch(`/api/trips/${tripId}/spots/${s.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 ...(latLngPatched ? { lat: s.lat, lng: s.lng } : {}),
+                transport_mode: s.transport_mode,
+                transport_note: s.transport_note,
                 ...(hadStale
                   ? { transport_duration_minutes: null, transport_distance_m: null }
                   : {}),
@@ -1205,6 +1237,31 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                       dayDate={activeDay.date}
                       timing={daySchedule?.timings[spot.id]}
                       onEdit={(s) => setEditingSpot({ spot: s, isNew: false })}
+                      onEditLeg={(s) => {
+                        const prevSpot = idx > 0 ? daySpots[idx - 1] : null;
+                        const co = daySchedule?.checkoutSpot ?? null;
+                        const fromLabel = prevSpot
+                          ? prevSpot.name
+                          : activeDay.departure_point || co?.name || "出発地";
+                        const fromCoords: LatLng | null = prevSpot
+                          ? prevSpot.lat !== null && prevSpot.lng !== null
+                            ? { lat: prevSpot.lat, lng: prevSpot.lng }
+                            : null
+                          : activeDay.departure_lat !== null && activeDay.departure_lng !== null
+                            ? { lat: activeDay.departure_lat, lng: activeDay.departure_lng }
+                            : co && co.lat !== null && co.lng !== null
+                              ? { lat: co.lat, lng: co.lng }
+                              : null;
+                        const routeFromKey = prevSpot
+                          ? `spot:${prevSpot.id}`
+                          : `day:${activeDay.day_index}`;
+                        setEditingLeg({
+                          spot: s,
+                          fromLabel,
+                          fromCoords,
+                          routeFromKey,
+                        });
+                      }}
                     />
                   ))}
                 </div>
@@ -1353,6 +1410,36 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           onSave={handleSaveSpot}
           onDelete={handleDeleteSpot}
           onClose={() => setEditingSpot(null)}
+        />
+      )}
+
+      {/* 移動区間の編集モーダル（スポット間の移動ピルをタップで開く） */}
+      {editingLeg && (
+        <LegEditorModal
+          fromLabel={editingLeg.fromLabel}
+          fromCoords={editingLeg.fromCoords}
+          toSpot={editingLeg.spot}
+          routeFromKey={editingLeg.routeFromKey}
+          onClose={() => setEditingLeg(null)}
+          onSave={async (updatedSpot) => {
+            const nextSpotsList = doc.spots.map((x) =>
+              x.id === updatedSpot.id ? updatedSpot : x,
+            );
+            setDoc((d) => ({ ...d, spots: nextSpotsList }));
+            await fetch(`/api/trips/${tripId}/spots/${updatedSpot.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                lat: updatedSpot.lat,
+                lng: updatedSpot.lng,
+                transport_mode: updatedSpot.transport_mode,
+                transport_duration_minutes: updatedSpot.transport_duration_minutes,
+                transport_distance_m: updatedSpot.transport_distance_m,
+                transport_note: updatedSpot.transport_note,
+              }),
+            });
+            notifyChange();
+          }}
         />
       )}
 
