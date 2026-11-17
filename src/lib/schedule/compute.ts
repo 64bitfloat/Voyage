@@ -132,38 +132,29 @@ export function computeDaySchedule(
   const baseDate = day.date ?? "2026-01-01";
   const deadlines = computeBackwardDeadlines(baseDate, orderedSpots);
 
-  if (!day.date || (!day.departure_time && !checkoutSpot?.check_out)) {
-    for (const s of orderedSpots) {
-      const dl = deadlines[s.id] ?? { must_leave_prev_by: null, leave_by_reason: null };
-      timings[s.id] = {
-        arrival: null,
-        departure: null,
-        wait_minutes: 0,
-        overrun_minutes: 0,
-        travel_unknown: false,
-        ...dl,
-      };
-    }
-    return { timings, conflicts, end: null, incomplete: true, checkoutSpot };
-  }
+  const incomplete = !day.date || (!day.departure_time && !checkoutSpot?.check_out);
 
-  // チェックアウトスポットがこの日に設定されている場合は、予定チェックアウト時刻を最優先し、なければ出発時刻から開始
-  let cursor = checkoutSpot?.check_out
+  // チェックアウトスポットがこの日に設定されている場合は、予定チェックアウト時刻を最優先し、なければ出発時刻から開始。
+  // 出発時刻が未設定でも、固定予約や宿泊チェックインがあればその時刻以降は表示する。
+  let cursor: number | null = checkoutSpot?.check_out
     ? Date.parse(checkoutSpot.check_out)
-    : Date.parse(combineDateTime(day.date, day.departure_time ?? "08:00"));
+    : day.date && day.departure_time
+      ? Date.parse(combineDateTime(day.date, day.departure_time))
+      : null;
 
   for (const s of orderedSpots) {
     const travel = s.transport_duration_minutes;
-    let arrival = cursor + (travel ?? 0) * MIN;
-    let start = arrival;
-    let wait = 0;
-    let overrun = 0;
     const deadline = deadlines[s.id] ?? { must_leave_prev_by: null, leave_by_reason: null };
 
     // 宿泊スポットで check_in が設定されている場合
     if (s.category === "lodging" && s.check_in) {
       const ci = Date.parse(s.check_in);
-      if (travel === null) {
+      let arrival = cursor !== null ? cursor + (travel ?? 0) * MIN : ci;
+      let start = arrival;
+      let wait = 0;
+      let overrun = 0;
+
+      if (cursor === null || travel === null) {
         arrival = ci;
         start = ci;
       } else if (arrival < ci) {
@@ -172,9 +163,10 @@ export function computeDaySchedule(
       } else if (arrival > ci) {
         overrun = Math.round((arrival - ci) / MIN);
       }
+
       // チェックアウトが同日の場合はチェックアウト時刻を出発時刻とし、翌日以降（日跨ぎ）の場合はチェックイン時刻でその日の行程を終了する
       let departure = start;
-      if (s.check_out) {
+      if (s.check_out && day.date) {
         const coDate = toTokyoDate(new Date(s.check_out));
         if (coDate === day.date) {
           departure = Math.max(start, Date.parse(s.check_out));
@@ -195,37 +187,75 @@ export function computeDaySchedule(
 
     if (s.is_fixed && s.reservation_time) {
       const res = Date.parse(s.reservation_time);
-      if (arrival > res) {
-        overrun = Math.round((arrival - res) / MIN);
-      } else {
-        wait = Math.round((res - arrival) / MIN);
-        start = res;
+      const arrival = cursor !== null ? cursor + (travel ?? 0) * MIN : res;
+      let start = arrival;
+      let wait = 0;
+      let overrun = 0;
+
+      if (cursor !== null) {
+        if (arrival > res) {
+          overrun = Math.round((arrival - res) / MIN);
+        } else {
+          wait = Math.round((res - arrival) / MIN);
+          start = res;
+        }
       }
+
+      const departure = start + s.stay_minutes * MIN;
+      const arrivalIso = toTokyoISO(new Date(arrival));
+      timings[s.id] = {
+        arrival: arrivalIso,
+        departure: toTokyoISO(new Date(departure)),
+        wait_minutes: wait,
+        overrun_minutes: overrun,
+        travel_unknown: travel === null,
+        ...deadline,
+      };
+      if (overrun > 0) {
+        conflicts.push({
+          spot_id: s.id,
+          spot_name: s.name,
+          reservation_time: toTokyoISO(new Date(s.reservation_time)),
+          arrival_planned: arrivalIso,
+          overrun_minutes: overrun,
+        });
+      }
+      cursor = departure;
+      continue;
     }
 
-    const departure = start + s.stay_minutes * MIN;
-    const arrivalIso = toTokyoISO(new Date(arrival));
+    if (cursor === null) {
+      timings[s.id] = {
+        arrival: null,
+        departure: null,
+        wait_minutes: 0,
+        overrun_minutes: 0,
+        travel_unknown: false,
+        ...deadline,
+      };
+      continue;
+    }
+
+    const arrival = cursor + (travel ?? 0) * MIN;
+    const departure = arrival + s.stay_minutes * MIN;
     timings[s.id] = {
-      arrival: arrivalIso,
+      arrival: toTokyoISO(new Date(arrival)),
       departure: toTokyoISO(new Date(departure)),
-      wait_minutes: wait,
-      overrun_minutes: overrun,
+      wait_minutes: 0,
+      overrun_minutes: 0,
       travel_unknown: travel === null,
       ...deadline,
     };
-    if (overrun > 0 && s.reservation_time) {
-      conflicts.push({
-        spot_id: s.id,
-        spot_name: s.name,
-        reservation_time: toTokyoISO(new Date(s.reservation_time)),
-        arrival_planned: arrivalIso,
-        overrun_minutes: overrun,
-      });
-    }
     cursor = departure;
   }
 
-  return { timings, conflicts, end: toTokyoISO(new Date(cursor)), incomplete: false, checkoutSpot };
+  return {
+    timings,
+    conflicts,
+    end: !incomplete && cursor !== null ? toTokyoISO(new Date(cursor)) : null,
+    incomplete,
+    checkoutSpot,
+  };
 }
 
 /**
