@@ -42,50 +42,84 @@ export interface DaySchedule {
 
 const MIN = 60_000;
 
-function computeLeaveByDeadline(
+function computeBackwardDeadlines(
   dayDate: string,
-  spot: SpotRow,
-): { must_leave_prev_by: string | null; leave_by_reason: string | null } {
-  const travelMs = (spot.transport_duration_minutes ?? 0) * MIN;
-  // 1. 予約・行きたい時刻（固定）がある場合: その時刻 − 移動時間
-  if (spot.is_fixed && spot.reservation_time) {
-    const resMs = Date.parse(spot.reservation_time);
-    const leaveMs = resMs - travelMs;
-    return {
-      must_leave_prev_by: toTokyoHHMM(toTokyoISO(new Date(leaveMs))),
-      leave_by_reason: `${toTokyoHHMM(spot.reservation_time)}着`,
-    };
+  orderedSpots: SpotRow[],
+): Record<string, { must_leave_prev_by: string | null; leave_by_reason: string | null }> {
+  const result: Record<string, { must_leave_prev_by: string | null; leave_by_reason: string | null }> =
+    {};
+  let nextLeaveMs: number | null = null;
+  let nextReason: string | null = null;
+
+  for (let i = orderedSpots.length - 1; i >= 0; i--) {
+    const spot = orderedSpots[i];
+    const travelMs = (spot.transport_duration_minutes ?? 0) * MIN;
+    const bh = deserializeBusinessHours(spot.transport_note);
+
+    let ownMaxArrivalMs: number | null = null;
+    let ownReason: string | null = null;
+
+    if (spot.is_fixed && spot.reservation_time) {
+      ownMaxArrivalMs = Date.parse(spot.reservation_time);
+      ownReason = `${toTokyoHHMM(spot.reservation_time)}着`;
+    } else if (spot.category === "lodging" && spot.check_in) {
+      ownMaxArrivalMs = Date.parse(spot.check_in);
+      ownReason = `${toTokyoHHMM(spot.check_in)}チェックイン`;
+    } else if (bh.targetTime) {
+      ownMaxArrivalMs = Date.parse(combineDateTime(dayDate, bh.targetTime));
+      ownReason = `目安 ${bh.targetTime}`;
+    } else if (bh.close) {
+      const closeIso = combineDateTime(dayDate, bh.close);
+      ownMaxArrivalMs = Date.parse(closeIso) - spot.stay_minutes * MIN;
+      ownReason = `${bh.close}閉店（滞在${spot.stay_minutes}分）`;
+    }
+
+    let propagatedMaxArrivalMs: number | null = null;
+    if (nextLeaveMs !== null) {
+      // 日跨ぎ宿泊のチェックインは当日滞在時間を逆算しない
+      const isOvernightLodging =
+        spot.category === "lodging" &&
+        spot.check_out &&
+        toTokyoDate(new Date(spot.check_out)) !== dayDate;
+      if (!isOvernightLodging) {
+        propagatedMaxArrivalMs = nextLeaveMs - spot.stay_minutes * MIN;
+      }
+    }
+
+    let effectiveMaxArrivalMs: number | null = null;
+    let effectiveReason: string | null = null;
+    if (ownMaxArrivalMs !== null && propagatedMaxArrivalMs !== null) {
+      if (propagatedMaxArrivalMs <= ownMaxArrivalMs) {
+        effectiveMaxArrivalMs = propagatedMaxArrivalMs;
+        effectiveReason = nextReason;
+      } else {
+        effectiveMaxArrivalMs = ownMaxArrivalMs;
+        effectiveReason = ownReason;
+      }
+    } else if (ownMaxArrivalMs !== null) {
+      effectiveMaxArrivalMs = ownMaxArrivalMs;
+      effectiveReason = ownReason;
+    } else if (propagatedMaxArrivalMs !== null) {
+      effectiveMaxArrivalMs = propagatedMaxArrivalMs;
+      effectiveReason = nextReason;
+    }
+
+    if (effectiveMaxArrivalMs !== null) {
+      const leavePrevMs: number = effectiveMaxArrivalMs - travelMs;
+      result[spot.id] = {
+        must_leave_prev_by: toTokyoHHMM(toTokyoISO(new Date(leavePrevMs))),
+        leave_by_reason: effectiveReason,
+      };
+      nextLeaveMs = leavePrevMs;
+      nextReason = effectiveReason;
+    } else {
+      result[spot.id] = { must_leave_prev_by: null, leave_by_reason: null };
+      nextLeaveMs = null;
+      nextReason = null;
+    }
   }
-  // 2. 宿泊で予定チェックインがある場合: 予定チェックイン − 移動時間
-  if (spot.category === "lodging" && spot.check_in) {
-    const ciMs = Date.parse(spot.check_in);
-    const leaveMs = ciMs - travelMs;
-    return {
-      must_leave_prev_by: toTokyoHHMM(toTokyoISO(new Date(leaveMs))),
-      leave_by_reason: `${toTokyoHHMM(spot.check_in)}チェックイン`,
-    };
-  }
-  // 3. 予約ではない「行きたい目安時刻（targetTime）」がある場合: その時刻 − 移動時間
-  const bh = deserializeBusinessHours(spot.transport_note);
-  if (bh.targetTime) {
-    const targetIso = combineDateTime(dayDate, bh.targetTime);
-    const leaveMs = Date.parse(targetIso) - travelMs;
-    return {
-      must_leave_prev_by: toTokyoHHMM(toTokyoISO(new Date(leaveMs))),
-      leave_by_reason: `目安 ${bh.targetTime}`,
-    };
-  }
-  // 4. 営業終了（閉店）時刻がある場合: 閉店時刻 − 滞在時間 − 移動時間
-  if (bh.close) {
-    const closeIso = combineDateTime(dayDate, bh.close);
-    const latestArrivalMs = Date.parse(closeIso) - spot.stay_minutes * MIN;
-    const leaveMs = latestArrivalMs - travelMs;
-    return {
-      must_leave_prev_by: toTokyoHHMM(toTokyoISO(new Date(leaveMs))),
-      leave_by_reason: `${bh.close}閉店（滞在${spot.stay_minutes}分）`,
-    };
-  }
-  return { must_leave_prev_by: null, leave_by_reason: null };
+
+  return result;
 }
 
 export function computeDaySchedule(
@@ -95,18 +129,21 @@ export function computeDaySchedule(
 ): DaySchedule {
   const timings: Record<string, SpotTiming> = {};
   const conflicts: ScheduleConflict[] = [];
+  const baseDate = day.date ?? "2026-01-01";
+  const deadlines = computeBackwardDeadlines(baseDate, orderedSpots);
 
   if (!day.date || (!day.departure_time && !checkoutSpot?.check_out)) {
-    for (const s of orderedSpots)
+    for (const s of orderedSpots) {
+      const dl = deadlines[s.id] ?? { must_leave_prev_by: null, leave_by_reason: null };
       timings[s.id] = {
         arrival: null,
         departure: null,
         wait_minutes: 0,
         overrun_minutes: 0,
         travel_unknown: false,
-        must_leave_prev_by: null,
-        leave_by_reason: null,
+        ...dl,
       };
+    }
     return { timings, conflicts, end: null, incomplete: true, checkoutSpot };
   }
 
@@ -121,7 +158,7 @@ export function computeDaySchedule(
     let start = arrival;
     let wait = 0;
     let overrun = 0;
-    const deadline = computeLeaveByDeadline(day.date, s);
+    const deadline = deadlines[s.id] ?? { must_leave_prev_by: null, leave_by_reason: null };
 
     // 宿泊スポットで check_in が設定されている場合
     if (s.category === "lodging" && s.check_in) {

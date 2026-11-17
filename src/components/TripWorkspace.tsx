@@ -1119,6 +1119,14 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                     🏨 宿泊連動
                   </span>
                 )}
+                {daySpots[0] && daySchedule?.timings[daySpots[0].id]?.must_leave_prev_by && (
+                  <span
+                    className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200"
+                    title={daySchedule.timings[daySpots[0].id]?.leave_by_reason ?? undefined}
+                  >
+                    🕒 {daySchedule.timings[daySpots[0].id]?.must_leave_prev_by} までに出発
+                  </span>
+                )}
               </div>
             </button>
 
