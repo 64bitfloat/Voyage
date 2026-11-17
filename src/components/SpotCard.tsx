@@ -13,10 +13,12 @@ import {
   MapPin,
   BedDouble,
   Pencil,
+  Navigation,
 } from "lucide-react";
 import type { SpotRow } from "@/lib/model/types";
 import type { SpotTiming } from "@/lib/schedule/compute";
 import { toTokyoHHMM } from "@/lib/datetime";
+import { buildGoogleMapsNavUrl } from "@/lib/geo/nav";
 import {
   checkBusinessHoursAlert,
   checkLodgingPolicyAlert,
@@ -117,6 +119,7 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit, onEditL
 
   const effectiveMode = spot.transport_mode ?? "car";
   const isTargetTime = !spot.is_fixed && Boolean(bhRule.targetTime);
+  const gmapNavUrl = buildGoogleMapsNavUrl(spot);
 
   return (
     <div ref={setNodeRef} style={style} className={isDragging ? "opacity-60 z-20" : ""}>
@@ -330,16 +333,31 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit, onEditL
               {spot.memo && <p className="text-xs text-slate-600 line-clamp-2">{spot.memo}</p>}
             </button>
 
-            {/* ドラッグハンドル（右端にスッキリ配置） */}
-            <button
-              type="button"
-              aria-label="並び替え"
-              {...attributes}
-              {...listeners}
-              className="p-1.5 rounded-xl text-slate-300 hover:text-slate-600 hover:bg-slate-100 touch-none cursor-grab active:cursor-grabbing shrink-0"
-            >
-              <GripVertical className="w-4 h-4" />
-            </button>
+            {/* 右端アクション列（並び替えハンドル＋ワンタップ道案内） */}
+            <div className="flex flex-col items-end justify-between self-stretch shrink-0 gap-2">
+              <button
+                type="button"
+                aria-label="並び替え"
+                {...attributes}
+                {...listeners}
+                className="p-1.5 rounded-xl text-slate-300 hover:text-slate-600 hover:bg-slate-100 touch-none cursor-grab active:cursor-grabbing"
+              >
+                <GripVertical className="w-4 h-4" />
+              </button>
+              {gmapNavUrl && (
+                <a
+                  href={gmapNavUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  title="現在地からGoogleマップで道案内を開始"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 text-[10px] font-bold transition active:scale-95"
+                >
+                  <Navigation className="w-3 h-3" />
+                  <span>ナビ</span>
+                </a>
+              )}
+            </div>
           </div>
         </div>
       </div>

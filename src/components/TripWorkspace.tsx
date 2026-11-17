@@ -58,6 +58,7 @@ import { useTripSync } from "@/lib/realtime/sync";
 import { estimateRouteFallback, getRouteProvider, type LatLng } from "@/lib/routing";
 import { deserializeBusinessHours, parseOsmOpeningHours, serializeBusinessHours } from "@/lib/geo/business-hours";
 import { geocodeSpot } from "@/lib/geo/geocode";
+import { buildGoogleMapsNavUrl } from "@/lib/geo/nav";
 import { toTokyoDate, toTokyoHHMM } from "@/lib/datetime";
 import type { PendingPin } from "./TripMap";
 import SpotCard from "./SpotCard";
@@ -1152,6 +1153,38 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               </button>
             </div>
           </div>
+
+          {/* ワンタップ道案内（現在地 → 次の目的地） */}
+          {(() => {
+            if (daySpots.length === 0) return null;
+            const nowMs = Date.now();
+            const nextSpot =
+              daySpots.find((s) => {
+                const t = daySchedule?.timings[s.id];
+                const ref = t?.departure ?? t?.arrival;
+                return ref ? Date.parse(ref) > nowMs : false;
+              }) ?? daySpots[0];
+            const navUrl = nextSpot ? buildGoogleMapsNavUrl(nextSpot) : null;
+            if (!navUrl || !nextSpot) return null;
+            return (
+              <a
+                href={navUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-3.5 py-2.5 shadow-sm transition active:scale-[0.99]"
+              >
+                <div className="min-w-0 flex items-center gap-2">
+                  <Navigation className="w-4 h-4 shrink-0" />
+                  <span className="text-xs font-bold truncate">
+                    現在地から次へナビ：{nextSpot.name}
+                  </span>
+                </div>
+                <span className="text-[11px] font-bold bg-white/20 px-2 py-0.5 rounded-full shrink-0">
+                  Googleマップ ↗
+                </span>
+              </a>
+            );
+          })()}
 
           {/* 前日からの宿泊チェックアウト表示（日跨ぎ宿泊がある場合、チェックアウト日の先頭に自動表示） */}
           {daySchedule?.checkoutSpot && (
