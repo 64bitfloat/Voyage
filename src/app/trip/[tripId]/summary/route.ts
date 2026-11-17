@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { buildExportFromDoc } from "@/lib/model/to-export";
 import { renderExportMarkdown, validateExport, countBySeverity } from "@/lib/export";
 import { getStore, isUuid } from "@/lib/server";
+import { decodeDocSnapshot } from "@/lib/share/snapshot";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +30,19 @@ export async function GET(req: Request, { params }: Ctx) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const url = new URL(req.url);
+  const format = url.searchParams.get("format");
+  const snapshotParam = url.searchParams.get("s");
+  const decodedSnapshot = decodeDocSnapshot(snapshotParam);
+
   const store = getStore();
   let doc = await store.getTripDoc(tripId);
+  if (decodedSnapshot && decodedSnapshot.trip.id === tripId) {
+    // URLスナップショットが渡された場合、DBが空（MemoryStore）ならスナップショットを採用
+    if (!doc || doc.spots.length === 0) {
+      doc = decodedSnapshot;
+    }
+  }
   if (!doc && store.kind === "memory") {
     const { initialDays } = await import("@/lib/model/types");
     await store.createTrip(
@@ -51,8 +63,6 @@ export async function GET(req: Request, { params }: Ctx) {
   }
 
   const exported = buildExportFromDoc(doc);
-  const url = new URL(req.url);
-  const format = url.searchParams.get("format");
 
   // 1. ?format=json → Content-Type: application/json で生JSONを返す
   if (format === "json") {
@@ -71,8 +81,9 @@ export async function GET(req: Request, { params }: Ctx) {
   const validation = validateExport(exported);
   const counts = countBySeverity(validation.issues);
   const safeJsonForScript = JSON.stringify(exported, null, 2).replace(/<\//g, "<\\/");
-  const jsonEndpoint = `/trip/${tripId}/summary?format=json`;
-  const tripUrl = `/trip/${tripId}`;
+  const sQuery = snapshotParam ? `s=${encodeURIComponent(snapshotParam)}` : "";
+  const jsonEndpoint = `/trip/${tripId}/summary?format=json${sQuery ? `&${sQuery}` : ""}`;
+  const tripUrl = `/trip/${tripId}${sQuery ? `?${sQuery}` : ""}`;
 
   const html = `<!DOCTYPE html>
 <html lang="ja">

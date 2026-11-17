@@ -24,7 +24,10 @@ export interface TripStore {
     passcodeHash?: string | null,
   ): Promise<void>;
   verifyTripPasscode(tripId: string, passcode: string): Promise<boolean>;
-  updateTrip(tripId: string, patch: Partial<Pick<TripRow, "title" | "notes">>): Promise<void>;
+  updateTrip(
+    tripId: string,
+    patch: Partial<Pick<TripRow, "title" | "start_date" | "end_date" | "notes">>,
+  ): Promise<void>;
   upsertDay(tripId: string, day: DayRow): Promise<void>;
   createSpot(tripId: string, spot: SpotRow): Promise<void>;
   updateSpot(tripId: string, spotId: string, patch: Partial<SpotRow>): Promise<boolean>;

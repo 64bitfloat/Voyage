@@ -91,7 +91,10 @@ export class SupabaseStore implements TripStore {
     return verifyPasscode(passcode, data.passcode_hash as string | null);
   }
 
-  async updateTrip(tripId: string, patch: Partial<Pick<TripRow, "title" | "notes">>) {
+  async updateTrip(
+    tripId: string,
+    patch: Partial<Pick<TripRow, "title" | "start_date" | "end_date" | "notes">>,
+  ) {
     const r = await this.db.from("trips").update(patch).eq("id", tripId);
     if (r.error) throw r.error;
   }

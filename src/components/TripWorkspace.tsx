@@ -35,13 +35,15 @@ import {
   Minimize2,
 } from "lucide-react";
 import {
+  addDays,
+  daysBetween,
+  initialDays,
   newSpot,
   type BelongingRow,
   type CostRow,
   type DayRow,
   type DishRow,
   type ParticipantRow,
-  type PhotoRow,
   type SpotRow,
   type TripDoc,
 } from "@/lib/model/types";
@@ -50,10 +52,10 @@ import { useTripSync } from "@/lib/realtime/sync";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
 import { searchPlaces } from "@/lib/geo/geocode";
 import { toTokyoHHMM } from "@/lib/datetime";
+import { decodeDocSnapshot, encodeDocSnapshot } from "@/lib/share/snapshot";
 import type { PendingPin } from "./TripMap";
 import SpotCard from "./SpotCard";
 import SpotEditorModal from "./SpotEditorModal";
-import PolaroidGallery from "./PolaroidGallery";
 import ParticipantsPanel from "./ParticipantsPanel";
 import CostsPanel from "./CostsPanel";
 import PrepAndDishesPanel from "./PrepAndDishesPanel";
@@ -75,40 +77,63 @@ interface TripWorkspaceProps {
   initialDoc: TripDoc;
 }
 
+/** 「出発前」(day_index 0) を除外し、Day 1..N のみに正規化する */
+function normalizeDays(doc: TripDoc): TripDoc {
+  const filtered = doc.days.filter((d) => d.day_index >= 1);
+  const days =
+    filtered.length > 0
+      ? filtered
+      : initialDays(doc.trip.start_date, doc.trip.end_date);
+  return { ...doc, days, photos: [] };
+}
+
 export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   const [doc, setDoc] = useState<TripDoc>(() => {
+    const base = normalizeDays(initialDoc);
     if (typeof window !== "undefined") {
       try {
-        const cached = localStorage.getItem(`voyage:doc:${initialDoc.trip.id}`);
+        // 1. 共有URLパラメータ (?s=...) があればそこから復元
+        const params = new URLSearchParams(window.location.search);
+        const fromSnap = decodeDocSnapshot(params.get("s"));
+        if (fromSnap && fromSnap.trip.id === base.trip.id) {
+          return normalizeDays(fromSnap);
+        }
+
+        // 2. ローカルキャッシュがあれば優先
+        const cached = localStorage.getItem(`voyage:doc:${base.trip.id}`);
         if (cached) {
           const parsed = JSON.parse(cached) as TripDoc;
-          // サーバーが空（MemoryStoreの別インスタンス）でローカルにデータがある場合はローカルを優先
-          if (initialDoc.spots.length === 0 && parsed.spots?.length > 0) {
-            return parsed;
+          if (parsed?.trip?.id === base.trip.id) {
+            return normalizeDays(parsed);
           }
         }
-        const initMeta = localStorage.getItem(`voyage:init:${initialDoc.trip.id}`);
+
+        // 3. トップ画面で入力したタイトル・開始日・終了日のメタ情報があればそこから Day 1..N を再計算
+        const initMeta = localStorage.getItem(`voyage:init:${base.trip.id}`);
         if (initMeta) {
           const meta = JSON.parse(initMeta) as {
             title?: string;
             start_date?: string | null;
             end_date?: string | null;
           };
+          const start = meta.start_date !== undefined ? meta.start_date : base.trip.start_date;
+          const end = meta.end_date !== undefined ? meta.end_date : base.trip.end_date;
           return {
-            ...initialDoc,
+            ...base,
             trip: {
-              ...initialDoc.trip,
-              title: meta.title || initialDoc.trip.title,
-              start_date: meta.start_date !== undefined ? meta.start_date : initialDoc.trip.start_date,
-              end_date: meta.end_date !== undefined ? meta.end_date : initialDoc.trip.end_date,
+              ...base.trip,
+              title: meta.title || base.trip.title,
+              start_date: start,
+              end_date: end,
             },
+            days: initialDays(start, end),
           };
         }
       } catch {
         // ignore
       }
     }
-    return initialDoc;
+    return base;
   });
 
   useEffect(() => {
@@ -118,10 +143,9 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       // ignore quota errors
     }
   }, [doc]);
+
   const [mainTab, setMainTab] = useState<MainTab>("itinerary");
-  const [activeDayIdx, setActiveDayIdx] = useState<number>(
-    initialDoc.days.find((d) => d.day_index === 1)?.day_index ?? 0,
-  );
+  const [activeDayIdx, setActiveDayIdx] = useState<number>(1);
   const [mapExpanded, setMapExpanded] = useState(false);
   const [editingSpot, setEditingSpot] = useState<{ spot: SpotRow; isNew: boolean } | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -146,7 +170,11 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
     const res = await fetch(`/api/trips/${tripId}`, { cache: "no-store" });
     if (res.ok) {
       const latest = (await res.json()) as TripDoc;
-      setDoc(latest);
+      // サーバーが MemoryStore の空枠を返した場合は、手元のデータが空でない限り上書きしない
+      setDoc((prev) => {
+        if (latest.spots.length === 0 && prev.spots.length > 0) return prev;
+        return normalizeDays(latest);
+      });
     }
   }, [tripId]);
 
@@ -156,15 +184,15 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
     () =>
       doc.days.find((d) => d.day_index === activeDayIdx) ??
       doc.days[0] ?? {
-        day_index: 0,
-        label: "出発前",
-        date: null,
+        day_index: 1,
+        label: "Day 1",
+        date: doc.trip.start_date,
         departure_point: null,
         departure_lat: null,
         departure_lng: null,
-        departure_time: null,
+        departure_time: "08:00",
       },
-    [doc.days, activeDayIdx],
+    [doc.days, activeDayIdx, doc.trip.start_date],
   );
 
   const daySpots = useMemo(
@@ -178,6 +206,48 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  /** 旅行全体の開始日・終了日を変更した際、Day 1..N の日付を連動して再設定する */
+  async function handleChangeTripDates(newStart: string | null, newEnd: string | null) {
+    const end = newStart && newEnd && newEnd < newStart ? newStart : newEnd;
+    const count =
+      newStart && end ? Math.min(31, Math.max(1, daysBetween(newStart, end) + 1)) : doc.days.length;
+
+    const nextDays: DayRow[] = [];
+    for (let i = 1; i <= count; i++) {
+      const existing = doc.days.find((d) => d.day_index === i);
+      nextDays.push({
+        day_index: i,
+        label: `Day ${i}`,
+        date: newStart ? addDays(newStart, i - 1) : existing?.date ?? null,
+        departure_point: existing?.departure_point ?? null,
+        departure_lat: existing?.departure_lat ?? null,
+        departure_lng: existing?.departure_lng ?? null,
+        departure_time: existing?.departure_time ?? "08:00",
+      });
+    }
+
+    setDoc((prev) => ({
+      ...prev,
+      trip: { ...prev.trip, start_date: newStart, end_date: end },
+      days: nextDays,
+    }));
+    if (activeDayIdx > count) setActiveDayIdx(count);
+
+    await fetch(`/api/trips/${tripId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ start_date: newStart, end_date: end }),
+    });
+    for (const d of nextDays) {
+      await fetch(`/api/trips/${tripId}/days/${d.day_index}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(d),
+      });
+    }
+    notifyChange();
+  }
 
   function getPrevCoordsFor(spotId: string | null, targetOrder?: number): LatLng | null {
     const list = daySpots;
@@ -319,12 +389,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
     const maxIdx = Math.max(0, ...doc.days.map((d) => d.day_index));
     const nextIdx = maxIdx + 1;
     const prevDate = doc.days.find((d) => d.day_index === maxIdx)?.date ?? doc.trip.start_date;
-    let nextDate: string | null = null;
-    if (prevDate) {
-      const dt = new Date(`${prevDate}T00:00:00Z`);
-      dt.setUTCDate(dt.getUTCDate() + 1);
-      nextDate = dt.toISOString().slice(0, 10);
-    }
+    const nextDate = prevDate ? addDays(prevDate, 1) : null;
     const newDay: DayRow = {
       day_index: nextIdx,
       label: `Day ${nextIdx}`,
@@ -334,7 +399,11 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       departure_lng: null,
       departure_time: "08:00",
     };
-    setDoc((prev) => ({ ...prev, days: [...prev.days, newDay] }));
+    setDoc((prev) => ({
+      ...prev,
+      trip: { ...prev.trip, end_date: nextDate ?? prev.trip.end_date },
+      days: [...prev.days, newDay],
+    }));
     setActiveDayIdx(nextIdx);
     await fetch(`/api/trips/${tripId}/days/${nextIdx}`, {
       method: "PUT",
@@ -354,7 +423,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       lat: pin?.lat ?? null,
       lng: pin?.lng ?? null,
       place_url: pin ? `https://maps.google.com/?q=${pin.lat},${pin.lng}` : null,
-      transport_mode: activeDay.day_index === 0 ? null : "car",
+      transport_mode: "car",
     });
     setEditingSpot({ spot: draft, isNew: true });
   }
@@ -410,7 +479,6 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
     setDoc((d) => ({
       ...d,
       spots: d.spots.filter((x) => x.id !== spotId),
-      photos: d.photos.filter((p) => p.spot_id !== spotId),
     }));
     await fetch(`/api/trips/${tripId}/spots/${spotId}`, { method: "DELETE" });
     notifyChange();
@@ -526,37 +594,17 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
     notifyChange();
   }
 
-  async function handleAddPhoto(photo: PhotoRow) {
-    setDoc((d) => ({ ...d, photos: [...d.photos, photo] }));
-    const res = await fetch(`/api/trips/${tripId}/photos`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(photo),
-    });
-    if (res.ok) {
-      const saved = (await res.json()) as PhotoRow;
-      setDoc((d) => ({
-        ...d,
-        photos: d.photos.map((p) => (p.id === saved.id ? saved : p)),
-      }));
-    }
-    notifyChange();
-  }
-
-  async function handleDeletePhoto(id: string) {
-    setDoc((d) => ({ ...d, photos: d.photos.filter((x) => x.id !== id) }));
-    await fetch(`/api/trips/${tripId}/photos`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    notifyChange();
-  }
-
+  /**
+   * 共同編集・しおり共有リンクのコピー
+   * - 現在のしおりスナップショットを `?s=...` に付与したURLをコピーするため、
+   *   Supabase未設定でも相手がURLを開いた瞬間にすべての旅程・費用・持ち物・参加者がそのまま表示される
+   */
   async function handleCopyShareUrl() {
-    await navigator.clipboard.writeText(window.location.href);
+    const snap = encodeDocSnapshot(doc);
+    const shareUrl = `${window.location.origin}/trip/${tripId}?s=${snap}`;
+    await navigator.clipboard.writeText(shareUrl);
     setCopiedUrl(true);
-    setTimeout(() => setCopiedUrl(false), 2000);
+    setTimeout(() => setCopiedUrl(false), 2500);
   }
 
   return (
@@ -570,20 +618,41 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         />
       )}
 
-      {/* iOS Voyage 風グラスモーフィズムヘッダー */}
-      <header className="px-3.5 py-2.5 bg-white/90 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between gap-2 shrink-0 z-10">
-        <div className="min-w-0">
-          <h1 className="text-sm sm:text-base font-extrabold tracking-tight truncate text-slate-900">
-            {doc.trip.title}
-          </h1>
-          <div className="text-[11px] text-slate-500 flex items-center gap-2">
-            {doc.trip.start_date && (
-              <span className="inline-flex items-center gap-1 font-medium">
-                <Calendar className="w-3 h-3 text-blue-600" />
-                {doc.trip.start_date}
-                {doc.trip.end_date ? ` 〜 ${doc.trip.end_date}` : ""}
-              </span>
-            )}
+      {/* iOS Voyage 風グラスモーフィズムヘッダー（タイトル・日程変更対応） */}
+      <header className="px-3.5 py-2 bg-white/90 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between gap-2 shrink-0 z-10">
+        <div className="min-w-0 flex-1">
+          <input
+            type="text"
+            value={doc.trip.title}
+            onChange={(e) =>
+              setDoc((prev) => ({ ...prev, trip: { ...prev.trip, title: e.target.value } }))
+            }
+            onBlur={async (e) => {
+              const title = e.target.value.trim() || "無題の旅行";
+              await fetch(`/api/trips/${tripId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title }),
+              });
+              notifyChange();
+            }}
+            className="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-none w-full max-w-xs truncate"
+          />
+          <div className="text-[11px] text-slate-500 flex items-center flex-wrap gap-1.5 mt-0.5">
+            <Calendar className="w-3 h-3 text-blue-600 shrink-0" />
+            <input
+              type="date"
+              value={doc.trip.start_date ?? ""}
+              onChange={(e) => handleChangeTripDates(e.target.value || null, doc.trip.end_date)}
+              className="bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-[11px] font-medium text-slate-700"
+            />
+            <span>〜</span>
+            <input
+              type="date"
+              value={doc.trip.end_date ?? ""}
+              onChange={(e) => handleChangeTripDates(doc.trip.start_date, e.target.value || null)}
+              className="bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-[11px] font-medium text-slate-700"
+            />
             {schedule.conflicts.length > 0 && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-red-100 text-red-700 font-bold">
                 <AlertTriangle className="w-3 h-3" />
@@ -593,19 +662,20 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           </div>
         </div>
 
-        {/* 右上アクション（共有URL + 第5.1章「Muse連携用データを出力」ボタン） */}
+        {/* 右上アクション（しおり共有URLコピー + 第5.1章「Muse連携用データを出力」ボタン） */}
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
             onClick={handleCopyShareUrl}
             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs"
+            title="現在のしおりデータを含めた共有リンクをコピーします"
           >
             {copiedUrl ? (
               <Check className="w-3.5 h-3.5 text-emerald-600" />
             ) : (
               <Share2 className="w-3.5 h-3.5" />
             )}
-            <span className="hidden sm:inline">{copiedUrl ? "コピー済" : "共有"}</span>
+            <span>{copiedUrl ? "しおりURLをコピーしました" : "しおりを共有"}</span>
           </button>
 
           <button
@@ -614,7 +684,8 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white text-xs font-extrabold shadow-sm hover:from-indigo-700 hover:to-blue-700"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Muse連携用データを出力</span>
+            <span className="hidden sm:inline">Muse連携用データを出力</span>
+            <span className="sm:hidden">Muse出力</span>
           </button>
         </div>
       </header>
@@ -650,7 +721,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
           {/* Voyage ボトムシート風タイムラインパネル */}
           <div className="flex-1 flex flex-col min-h-0 -mt-3 z-10 rounded-t-3xl bg-[#f5f6f8] shadow-[0_-6px_20px_rgba(15,23,42,0.08)] border-t border-slate-200/80 overflow-hidden">
-            {/* シートハンドル + 日程セグメントピルタブ（出発前 / Day 1 / Day 2 ...） */}
+            {/* シートハンドル + 日程セグメントピルタブ（Day 1 / Day 2 ... のみ） */}
             <div className="bg-white px-3 pt-2 pb-2 border-b border-slate-200/80 shrink-0">
               <div className="w-9 h-1 rounded-full bg-slate-300 mx-auto mb-2" />
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
@@ -699,83 +770,81 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
             {/* タイムライン本体 */}
             <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
-              {/* 出発設定カード（Day 1 以降） */}
-              {activeDay.day_index > 0 && (
-                <div className="rounded-2xl bg-white border border-slate-200/90 p-3 space-y-2 shadow-2xs">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-800">
-                      <Navigation className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>出発地点・出発時刻</span>
-                    </div>
-                    {daySpots.length > 0 && (
-                      <button
-                        type="button"
-                        disabled={recalcBusy}
-                        onClick={() => recalculateDayRoutes(activeDay, daySpots)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 disabled:opacity-50"
-                      >
-                        <Calculator className="w-3 h-3" />
-                        {recalcBusy ? "ルート計算中..." : "移動時間を再計算"}
-                      </button>
-                    )}
+              {/* 出発設定カード */}
+              <div className="rounded-2xl bg-white border border-slate-200/90 p-3 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-800">
+                    <Navigation className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{activeDay.label} の出発設定</span>
+                  </div>
+                  {daySpots.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={recalcBusy}
+                      onClick={() => recalculateDayRoutes(activeDay, daySpots)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 disabled:opacity-50"
+                    >
+                      <Calculator className="w-3 h-3" />
+                      {recalcBusy ? "ルート計算中..." : "移動時間を再計算"}
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                  <div className="sm:col-span-3 flex items-center gap-1.5">
+                    <span className="text-[11px] text-slate-500 shrink-0">日付</span>
+                    <input
+                      type="date"
+                      value={activeDay.date ?? ""}
+                      onChange={(e) => handleSaveDayPatch({ date: e.target.value || null })}
+                      className="w-full px-2 py-1.5 rounded-xl border border-slate-300 text-xs"
+                    />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                    <div className="sm:col-span-3 flex items-center gap-1.5">
-                      <span className="text-[11px] text-slate-500 shrink-0">日付</span>
-                      <input
-                        type="date"
-                        value={activeDay.date ?? ""}
-                        onChange={(e) => handleSaveDayPatch({ date: e.target.value || null })}
-                        className="w-full px-2 py-1.5 rounded-xl border border-slate-300 text-xs"
-                      />
-                    </div>
+                  <div className="sm:col-span-3 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="text-[11px] text-slate-500 shrink-0">出発</span>
+                    <input
+                      type="time"
+                      value={activeDay.departure_time ?? ""}
+                      onChange={(e) =>
+                        handleSaveDayPatch({ departure_time: e.target.value || null })
+                      }
+                      className="w-full px-2 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold"
+                    />
+                  </div>
 
-                    <div className="sm:col-span-3 flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="text-[11px] text-slate-500 shrink-0">出発</span>
-                      <input
-                        type="time"
-                        value={activeDay.departure_time ?? ""}
-                        onChange={(e) =>
-                          handleSaveDayPatch({ departure_time: e.target.value || null })
-                        }
-                        className="w-full px-2 py-1.5 rounded-xl border border-slate-300 text-xs font-mono font-bold"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-6 flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        value={activeDay.departure_point ?? ""}
-                        onChange={(e) =>
-                          setDoc((prev) => ({
-                            ...prev,
-                            days: prev.days.map((d) =>
-                              d.day_index === activeDay.day_index
-                                ? { ...d, departure_point: e.target.value || null }
-                                : d,
-                            ),
-                          }))
-                        }
-                        onBlur={(e) =>
-                          handleSaveDayPatch({ departure_point: e.target.value || null })
-                        }
-                        placeholder="出発地点（例: 自宅 / 新宿駅）"
-                        className="flex-1 px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs"
-                      />
-                      <button
-                        type="button"
-                        disabled={depGeoBusy}
-                        onClick={handleGeocodeDeparture}
-                        className="px-2.5 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 shrink-0"
-                      >
-                        {depGeoBusy ? "..." : "座標取得"}
-                      </button>
-                    </div>
+                  <div className="sm:col-span-6 flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={activeDay.departure_point ?? ""}
+                      onChange={(e) =>
+                        setDoc((prev) => ({
+                          ...prev,
+                          days: prev.days.map((d) =>
+                            d.day_index === activeDay.day_index
+                              ? { ...d, departure_point: e.target.value || null }
+                              : d,
+                          ),
+                        }))
+                      }
+                      onBlur={(e) =>
+                        handleSaveDayPatch({ departure_point: e.target.value || null })
+                      }
+                      placeholder="出発地点（例: 自宅 / 新宿駅）"
+                      className="flex-1 px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs"
+                    />
+                    <button
+                      type="button"
+                      disabled={depGeoBusy}
+                      onClick={handleGeocodeDeparture}
+                      className="px-2.5 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 shrink-0"
+                    >
+                      {depGeoBusy ? "..." : "座標取得"}
+                    </button>
                   </div>
                 </div>
-              )}
+              </div>
 
               {/* スポット一覧（Voyage風クロノグラフ軸 + D&D） */}
               {daySpots.length === 0 ? (
@@ -809,7 +878,6 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                           index={idx}
                           spot={spot}
                           timing={daySchedule?.timings[spot.id]}
-                          photos={doc.photos.filter((p) => p.spot_id === spot.id)}
                           onEdit={(s) => setEditingSpot({ spot: s, isNew: false })}
                         />
                       ))}
@@ -818,7 +886,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                 </DndContext>
               )}
 
-              <div className="flex items-center justify-between pt-1">
+              <div className="flex items-center justify-between pt-1 pb-6">
                 {daySchedule?.end ? (
                   <span className="text-xs text-slate-500 font-mono font-bold">
                     🏁 全行程終了予定: {toTokyoHHMM(daySchedule.end)}
@@ -835,16 +903,6 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                   スポットを追加
                 </button>
               </div>
-
-              {/* 第4章: 思い出写真＆チェキ風タイムライン */}
-              <PolaroidGallery
-                day={activeDay}
-                spots={daySpots}
-                photos={doc.photos}
-                participants={doc.participants}
-                onAddPhoto={handleAddPhoto}
-                onDeletePhoto={handleDeletePhoto}
-              />
             </div>
           </div>
         </>
@@ -918,7 +976,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           }`}
         >
           <MapPin className="w-4 h-4" />
-          <span className="text-[10px] mt-0.5">旅程・写真</span>
+          <span className="text-[10px] mt-0.5">旅程</span>
         </button>
 
         <button

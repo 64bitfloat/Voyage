@@ -22,8 +22,8 @@ const dishId = "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e41";
 const photoId = "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e51";
 
 const days = initialDays("2026-12-12", "2026-12-13");
-days[1].departure_point = "自宅";
-days[1].departure_time = "08:00";
+days[0].departure_point = "自宅";
+days[0].departure_time = "08:00";
 
 const spot1 = newSpot({
   id: spot1Id,
@@ -75,7 +75,7 @@ const spotLodging = newSpot({
 });
 
 // 1. スケジュール破綻検知テスト（20分超過）
-const sched1 = computeDaySchedule(days[1], [spot1, spot2]);
+const sched1 = computeDaySchedule(days[0], [spot1, spot2]);
 assert.equal(sched1.timings[spot1Id].arrival, "2026-12-12T10:00:00+09:00");
 assert.equal(sched1.timings[spot1Id].departure, "2026-12-12T11:30:00+09:00");
 assert.equal(sched1.timings[spot2Id].arrival, "2026-12-12T12:20:00+09:00");
@@ -86,7 +86,7 @@ assert.equal(sched1.conflicts[0].overrun_minutes, 20);
 // 2. 並び替え（spot2 → spot1）で連鎖再計算され、破綻が解消されることの確認
 const spot2First = { ...spot2, sort_order: 0, transport_duration_minutes: 120 };
 const spot1Second = { ...spot1, sort_order: 1, transport_duration_minutes: 20 };
-const schedReordered = computeDaySchedule(days[1], [spot2First, spot1Second]);
+const schedReordered = computeDaySchedule(days[0], [spot2First, spot1Second]);
 assert.equal(schedReordered.timings[spot2Id].overrun_minutes, 0);
 assert.equal(schedReordered.timings[spot2Id].wait_minutes, 120);
 assert.equal(schedReordered.timings[spot2Id].departure, "2026-12-12T13:30:00+09:00");
@@ -168,7 +168,7 @@ const validated = validateExport(exported);
 assert.equal(validated.schemaValid, true);
 assert.equal(validated.issues.length, 0, `期待外の警告: ${JSON.stringify(validated.issues)}`);
 assert.equal(exported.trip.lodging?.name, "Shoji Lake Side Camp");
-assert.equal(exported.trip.days[1].spots[0].photos.length, 1);
+assert.equal(exported.trip.days[0].spots[0].photos.length, 1);
 
 const md = renderExportMarkdown(exported);
 assert.match(md, /精進レークサイドキャンプ/);

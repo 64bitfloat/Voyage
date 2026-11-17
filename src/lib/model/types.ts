@@ -187,7 +187,12 @@ export const CreateTripInput = z
   );
 export type CreateTripInput = z.infer<typeof CreateTripInput>;
 
-export const UpdateTripInput = TripRowSchema.pick({ title: true, notes: true }).partial();
+export const UpdateTripInput = TripRowSchema.pick({
+  title: true,
+  start_date: true,
+  end_date: true,
+  notes: true,
+}).partial();
 
 export const UpsertDayInput = DayRowSchema.omit({ day_index: true }).partial();
 
@@ -217,11 +222,11 @@ export function addDays(date: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** 新規旅行の初期日程（出発前 + Day1..N） */
+/** 新規旅行の初期日程（Day 1..N のみ。「出発前」は作らない） */
 export function initialDays(start: string | null, end: string | null): DayRow[] {
   const empty = { departure_point: null, departure_lat: null, departure_lng: null, departure_time: null };
-  const days: DayRow[] = [{ day_index: 0, label: "出発前", date: null, ...empty }];
-  const n = start && end ? daysBetween(start, end) + 1 : 1;
+  const days: DayRow[] = [];
+  const n = start && end && start <= end ? daysBetween(start, end) + 1 : 1;
   for (let i = 1; i <= n; i++) {
     days.push({
       day_index: i,

@@ -12,9 +12,8 @@ import {
   AlertTriangle,
   MapPin,
   BedDouble,
-  Camera,
 } from "lucide-react";
-import type { PhotoRow, SpotRow } from "@/lib/model/types";
+import type { SpotRow } from "@/lib/model/types";
 import type { SpotTiming } from "@/lib/schedule/compute";
 import { toTokyoHHMM } from "@/lib/datetime";
 
@@ -70,11 +69,10 @@ interface SpotCardProps {
   index: number;
   spot: SpotRow;
   timing: SpotTiming | undefined;
-  photos?: PhotoRow[];
   onEdit: (spot: SpotRow) => void;
 }
 
-export default function SpotCard({ index, spot, timing, photos = [], onEdit }: SpotCardProps) {
+export default function SpotCard({ index, spot, timing, onEdit }: SpotCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: spot.id,
   });
@@ -199,12 +197,6 @@ export default function SpotCard({ index, spot, timing, photos = [], onEdit }: S
                 {spot.is_fixed && spot.reservation_time && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                     予約 {toTokyoHHMM(spot.reservation_time)} 固定
-                  </span>
-                )}
-                {photos.length > 0 && (
-                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                    <Camera className="w-3 h-3" />
-                    {photos.length}
                   </span>
                 )}
               </div>

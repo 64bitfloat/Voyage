@@ -55,7 +55,10 @@ export class MemoryStore implements TripStore {
     return verifyPasscode(passcode, entry.passcodeHash);
   }
 
-  async updateTrip(tripId: string, patch: Partial<Pick<TripRow, "title" | "notes">>) {
+  async updateTrip(
+    tripId: string,
+    patch: Partial<Pick<TripRow, "title" | "start_date" | "end_date" | "notes">>,
+  ) {
     const entry = db.get(tripId);
     if (entry) Object.assign(entry.doc.trip, patch);
   }
