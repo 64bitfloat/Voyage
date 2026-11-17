@@ -87,6 +87,85 @@ export function parseOsmOpeningHours(osm: string | null | undefined): BusinessHo
   };
 }
 
+/**
+ * 日本語の検索結果テキスト（例: "営業時間 11:00～20:00 定休日 毎週火曜日" や "11時～20時 休日：火曜"）から
+ * 開店・閉店時刻と定休日を抽出する
+ */
+export function parseJapaneseBusinessHoursFromText(text: string): BusinessHoursRule {
+  // 全角数字・コロンを半角に正規化
+  const norm = text
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/：/g, ":")
+    .replace(/&nbsp;|&middot;|&gt;|&lt;/g, " ");
+
+  let open: string | null = null;
+  let close: string | null = null;
+
+  const pad2 = (n: string) => n.padStart(2, "0");
+
+  // 1. 「営業時間」付近の時刻パターンを最優先で探す
+  const nearLabelRegex =
+    /(?:営業時間|営業|ご入浴|外来入浴)[^0-9]{0,25}?(\d{1,2})(?::(\d{2})|時(?:(\d{2})分)?)?\s*[〜～~\-－ー]\s*(\d{1,2})(?::(\d{2})|時(?:(\d{2})分)?)?/;
+  const m1 = norm.match(nearLabelRegex);
+  if (m1) {
+    const h1 = Number(m1[1]);
+    const min1 = m1[2] ?? m1[3] ?? "00";
+    const h2 = Number(m1[4]);
+    const min2 = m1[5] ?? m1[6] ?? "00";
+    if (h1 >= 0 && h1 <= 23 && h2 >= 0 && h2 <= 24) {
+      open = `${pad2(String(h1))}:${min1}`;
+      close = h2 === 24 ? "23:59" : `${pad2(String(h2))}:${min2}`;
+    }
+  }
+
+  // 2. 見つからなければ HH:MM〜HH:MM または H時〜H時 の一般パターン
+  if (!open || !close) {
+    const generalRegex =
+      /(\d{1,2})(?::(\d{2})|時(?:(\d{2})分)?)\s*[〜～~\-－ー]\s*(\d{1,2})(?::(\d{2})|時(?:(\d{2})分)?)/;
+    const m2 = norm.match(generalRegex);
+    if (m2) {
+      const h1 = Number(m2[1]);
+      const min1 = m2[2] ?? m2[3] ?? "00";
+      const h2 = Number(m2[4]);
+      const min2 = m2[5] ?? m2[6] ?? "00";
+      if (h1 >= 4 && h1 <= 22 && h2 >= 8 && h2 <= 24) {
+        open = `${pad2(String(h1))}:${min1}`;
+        close = h2 === 24 ? "23:59" : `${pad2(String(h2))}:${min2}`;
+      }
+    }
+  }
+
+  // 3. 定休日・休館日・休日の曜日抽出
+  //    ただし「（火曜日が祝祭日の場合は木曜日）」のような括弧内の条件曜日は誤検出しないよう先に括弧を除去する
+  const withoutParens = norm.replace(/（[^）]*）|\([^)]*\)/g, " ");
+  const closedSet = new Set<number>();
+  const closedRegex = /(?:定休日|休館日|休業日|休日|店休日)\s*[:.\s]*([^\n。;；]{1,25})/g;
+  let cm: RegExpExecArray | null;
+  while ((cm = closedRegex.exec(withoutParens)) !== null) {
+    const snippet = cm[1];
+    if (/無休|なし/.test(snippet)) continue;
+    DAY_NAMES_JA.forEach((ja, idx) => {
+      if (new RegExp(`${ja}曜|毎週${ja}|[・、,\\s]${ja}(?:[・、,\\s]|$)`).test(snippet)) {
+        closedSet.add(idx);
+      }
+    });
+  }
+
+  const closedDays = [...closedSet].sort();
+  const summaryParts: string[] = [];
+  if (open && close) summaryParts.push(`${open}〜${close}`);
+  if (closedDays.length > 0) {
+    summaryParts.push(`定休:${closedDays.map((d) => `${dayNumberToJa(d)}曜`).join("・")}`);
+  }
+
+  return {
+    open,
+    close,
+    closedDays,
+    rawText: summaryParts.join(" / "),
+  };
+}
+
 /** BusinessHoursRule を SpotRow.transport_note に保存・復元するシリアライズ関数 */
 export function serializeBusinessHours(rule: BusinessHoursRule): string {
   if (!rule.open && !rule.close && rule.closedDays.length === 0 && !rule.rawText) return "";

@@ -31,6 +31,11 @@ const CATEGORY_STYLE: Record<
     dot: "bg-blue-600 ring-blue-100",
     badge: "bg-blue-50 text-blue-700 border-blue-200/80",
   },
+  onsen: {
+    label: "温泉",
+    dot: "bg-rose-600 ring-rose-100",
+    badge: "bg-rose-50 text-rose-700 border-rose-200/80",
+  },
   meal: {
     label: "食事",
     dot: "bg-orange-500 ring-orange-100",

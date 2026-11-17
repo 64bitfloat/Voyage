@@ -12,6 +12,7 @@ const STATUS_JA: Record<string, string> = {
 
 const CAT_JA: Record<string, string> = {
   sightseeing: "観光",
+  onsen: "温泉",
   meal: "食事",
   lodging: "宿泊",
   transport: "移動",

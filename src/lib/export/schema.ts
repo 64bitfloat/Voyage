@@ -55,7 +55,15 @@ export const LngSchema = z.number().min(-180).max(180);
 /* 列挙値（英語固定。日本語の自由記述にしない）                        */
 /* ------------------------------------------------------------------ */
 
-export const SpotCategory = z.enum(["meal", "sightseeing", "lodging", "transport", "shopping", "other"]);
+export const SpotCategory = z.enum([
+  "meal",
+  "sightseeing",
+  "onsen",
+  "lodging",
+  "transport",
+  "shopping",
+  "other",
+]);
 export const SpotStatus = z.enum(["decided", "candidate", "undecided"]);
 export const TransportMode = z.enum(["car", "walk", "train", "manual"]);
 export const CostCategory = z.enum(["lodging", "transport", "food", "ticket", "shopping", "other"]);

@@ -70,7 +70,7 @@ create table if not exists public.spots (
   sort_order  integer not null default 0,
   name        text not null default '',
   category    text not null default 'sightseeing'
-              check (category in ('meal','sightseeing','lodging','transport','shopping','other')),
+              check (category in ('meal','sightseeing','onsen','lodging','transport','shopping','other')),
   status      text not null default 'undecided'
               check (status in ('decided','candidate','undecided')),
   is_main     boolean not null default false,

@@ -9,6 +9,7 @@ import { initialDays, newSpot, type TripDoc } from "../src/lib/model/types";
 import { computeDaySchedule } from "../src/lib/schedule/compute";
 import { buildExportFromDoc } from "../src/lib/model/to-export";
 import { renderExportMarkdown, validateExport } from "../src/lib/export";
+import { parseJapaneseBusinessHoursFromText, checkBusinessHoursAlert } from "../src/lib/geo/business-hours";
 
 const tripId = "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e01";
 const spot1Id = "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e02";
@@ -174,4 +175,18 @@ const md = renderExportMarkdown(exported);
 assert.match(md, /精進レークサイドキャンプ/);
 assert.match(md, /10,000円/); // 割勘対象額
 
-console.log("✅ 段階2・段階3（全エンティティ・スケジュール破綻検知・エクスポート・Markdown生成）の検証に合格しました");
+// 4. 日本語テキストからの営業時間・定休日自動抽出 & 休業日・営業時間外アラート検証（下條温泉郷 コスモスの湯の例）
+const sampleSnippet =
+  "住 所: 長野県下伊那郡下條村睦沢3405 ; 営業時間: [外来入浴]11:00～20:00（受付19:30まで） ; 定休日: 毎週火曜日（火曜日が祝祭日の場合は木曜日）";
+const bh = parseJapaneseBusinessHoursFromText(sampleSnippet);
+assert.equal(bh.open, "11:00");
+assert.equal(bh.close, "20:00");
+assert.deepEqual(bh.closedDays, [2]); // 2 = 火曜
+// 火曜日 (2026-12-15) に訪問予定の場合 → 休業日アラート
+assert.match(checkBusinessHoursAlert(bh, "2026-12-15", "14:00", "15:00") ?? "", /休業日/);
+// 水曜日 (2026-12-16) の 20:30 に到着予定の場合 → 営業時間外アラート
+assert.match(checkBusinessHoursAlert(bh, "2026-12-16", "20:30", "21:30") ?? "", /営業時間外/);
+// 水曜日 (2026-12-16) の 14:00〜15:30 の場合 → アラートなし (null)
+assert.equal(checkBusinessHoursAlert(bh, "2026-12-16", "14:00", "15:30"), null);
+
+console.log("✅ 段階2・段階3（全エンティティ・スケジュール破綻検知・エクスポート・Markdown生成・営業時間/定休日自動抽出）の検証に合格しました");

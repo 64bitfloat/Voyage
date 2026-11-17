@@ -26,6 +26,7 @@ interface SpotEditorModalProps {
 
 const CATEGORIES: { value: SpotRow["category"]; label: string }[] = [
   { value: "sightseeing", label: "観光" },
+  { value: "onsen", label: "温泉" },
   { value: "meal", label: "食事" },
   { value: "lodging", label: "宿泊" },
   { value: "transport", label: "移動" },
@@ -112,6 +113,7 @@ export default function SpotEditorModal({
         lat?: number | null;
         lng?: number | null;
         place_url?: string;
+        suggested_category?: SpotRow["category"];
         business_hours?: BusinessHoursRule;
         error?: string;
       };
@@ -123,11 +125,15 @@ export default function SpotEditorModal({
       setSpot((prev) => ({
         ...prev,
         name: data.name || prev.name,
+        category: data.suggested_category ?? prev.category,
         address: data.address ?? prev.address,
         lat: data.lat ?? prev.lat,
         lng: data.lng ?? prev.lng,
         place_url: data.place_url ?? gmapUrl.trim(),
       }));
+      if (data.suggested_category === "lodging") {
+        setHasCheckInOut(true);
+      }
 
       if (data.business_hours) {
         setBhRule(data.business_hours);
@@ -342,7 +348,7 @@ export default function SpotEditorModal({
           {/* カテゴリ */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-neutral-700">カテゴリ</label>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
               {CATEGORIES.map((c) => (
                 <button
                   key={c.value}

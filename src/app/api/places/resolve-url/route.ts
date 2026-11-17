@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { parseOsmOpeningHours, type BusinessHoursRule } from "@/lib/geo/business-hours";
+import {
+  parseJapaneseBusinessHoursFromText,
+  parseOsmOpeningHours,
+  type BusinessHoursRule,
+} from "@/lib/geo/business-hours";
+import type { SpotRow } from "@/lib/model/types";
 import { jsonError, parseBody } from "@/lib/server";
 
 const InputSchema = z.object({
@@ -13,6 +18,7 @@ interface ResolvedPlace {
   lat: number | null;
   lng: number | null;
   place_url: string;
+  suggested_category?: SpotRow["category"];
   business_hours: BusinessHoursRule;
 }
 
@@ -37,13 +43,12 @@ function extractFromGoogleMapsUrl(rawUrl: string): {
     const placeMatch = u.pathname.match(/\/maps\/(?:place|search)\/([^/]+)/);
     if (placeMatch?.[1]) {
       const decoded = decodeURIComponent(placeMatch[1].replace(/\+/g, " ")).trim();
-      // 座標文字列でなければ名称として採用
       if (!/^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(decoded)) {
         name = decoded;
       }
     }
 
-    // 2. ?q=<名称 or lat,lng> / ?query=<...>
+    // 2. ?q=<名称 or lat,lng> / ?query=<...> (share.google のリダイレクト先もここに名称が入る)
     const qParam = u.searchParams.get("q") ?? u.searchParams.get("query");
     if (qParam) {
       const coordInQ = qParam.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
@@ -78,25 +83,95 @@ function extractFromGoogleMapsUrl(rawUrl: string): {
 }
 
 /**
- * Google マップの共有リンク（短縮URL `maps.app.goo.gl/...` または通常URL）を受け取り、
- * 場所名・住所・座標・営業時間（OSM `opening_hours`）を自動取得して返す
+ * 名称から候補クエリを生成する（例: "下條温泉郷 コスモスの湯" → ["下條温泉郷 コスモスの湯", "コスモスの湯", "下條温泉郷"]）
+ */
+function buildSearchCandidates(rawName: string): string[] {
+  const candidates = [rawName.trim()];
+  const parts = rawName
+    .trim()
+    .split(/[\s　・/／]+/)
+    .filter((p) => p.length >= 2);
+  if (parts.length >= 2) {
+    // 施設固有名は末尾トークン（例: "コスモスの湯"）に来ることが多いため逆順で追加
+    for (let i = parts.length - 1; i >= 0; i--) {
+      if (!candidates.includes(parts[i])) candidates.push(parts[i]);
+    }
+  }
+  return candidates;
+}
+
+function guessCategory(name: string, osmType?: string): SpotRow["category"] | undefined {
+  if (
+    osmType === "public_bath" ||
+    osmType === "hot_spring" ||
+    /温泉|の湯|露天風呂|銭湯|スパ|サウナ/.test(name)
+  ) {
+    return "onsen";
+  }
+  if (/ホテル|旅館|キャンプ|宿|ロッジ|ペンション|ヴィラ/.test(name)) {
+    return "lodging";
+  }
+  if (/レストラン|カフェ|食堂|そば|蕎麦|うどん|ラーメン|焼肉|寿司|居酒屋|亭|庵/.test(name)) {
+    return "meal";
+  }
+  if (/駅|空港|インター|IC|SA|PA|サービスエリア|道の駅/.test(name)) {
+    return "transport";
+  }
+  return undefined;
+}
+
+async function fetchWebBusinessHoursAndAddress(
+  placeName: string,
+): Promise<{ rule: BusinessHoursRule; address: string | null }> {
+  try {
+    const q = `${placeName} 営業時間 定休日`;
+    const url = `https://search.yahoo.co.jp/search?p=${encodeURIComponent(q)}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "ja-JP,ja;q=0.9",
+      },
+    });
+    if (!res.ok) return { rule: { open: null, close: null, closedDays: [], rawText: "" }, address: null };
+    const html = await res.text();
+    const plain = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ");
+
+    const rule = parseJapaneseBusinessHoursFromText(plain);
+
+    // 住所がまだ取れていない場合の補助抽出（例: 長野県下伊那郡下條村睦沢3405）
+    const addrMatch = plain.match(
+      /(?:北海道|東京都|(?:京都|大阪)府|.{2,3}県)[^\s。、；;・|｜]{4,30}\d+(?:[-ー－]\d+)*/,
+    );
+    return { rule, address: addrMatch ? addrMatch[0] : null };
+  } catch {
+    return { rule: { open: null, close: null, closedDays: [], rawText: "" }, address: null };
+  }
+}
+
+/**
+ * Google マップの共有リンク（`share.google/...` / `maps.app.goo.gl/...` / 通常URL）を受け取り、
+ * 場所名・住所・座標・カテゴリ・営業時間＆定休日を自動取得して返す
  */
 export async function POST(req: Request) {
   const parsed = await parseBody(req, InputSchema);
   if (!parsed.ok) return parsed.res;
 
-  // 共有テキスト（例: "〇〇カフェ\nhttps://maps.app.goo.gl/xxx"）が丸ごと貼られた場合もURL部分を抽出
   const rawInput = parsed.data.url;
   const urlMatch = rawInput.match(/https?:\/\/[^\s]+/);
   if (!urlMatch) {
     return jsonError(422, "有効なURLが見つかりませんでした");
   }
   const inputUrl = urlMatch[0];
-  const prefixText = rawInput.slice(0, urlMatch.index).trim().split(/\r?\n/)[0]?.trim() || null;
+  const prefixText =
+    rawInput.slice(0, urlMatch.index).trim().split(/\r?\n/)[0]?.trim() || null;
 
   let finalUrl = inputUrl;
   try {
-    // 短縮URL (maps.app.goo.gl / goo.gl) のリダイレクト先を展開
     const res = await fetch(inputUrl, {
       method: "GET",
       redirect: "follow",
@@ -107,7 +182,7 @@ export async function POST(req: Request) {
     });
     if (res.url) finalUrl = res.url;
   } catch {
-    // 展開失敗時は元のURLのまま解析を試みる
+    // ignore redirect errors
   }
 
   let { name, lat, lng } = extractFromGoogleMapsUrl(finalUrl);
@@ -115,27 +190,34 @@ export async function POST(req: Request) {
 
   let address: string | null = null;
   let openingHoursRaw: string | null = null;
+  let osmType: string | undefined;
 
   try {
-    // A. 名称が取れている場合は Nominatim search (extratags=1) で住所・座標・opening_hours を照会
+    // A. 名称の候補リストで Nominatim を順に検索（「下條温泉郷 コスモスの湯」→「コスモスの湯」フォールバック）
     if (name) {
-      const searchUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&extratags=1&limit=3&accept-language=ja&countrycodes=jp&q=${encodeURIComponent(
-        name,
-      )}`;
-      const sRes = await fetch(searchUrl, { headers: NOMINATIM_HEADERS });
-      if (sRes.ok) {
-        const list = (await sRes.json()) as {
-          name?: string;
-          display_name?: string;
-          lat?: string;
-          lon?: string;
-          extratags?: { opening_hours?: string };
-        }[];
-        if (list[0]) {
-          address = list[0].display_name ?? null;
-          if (lat === null && list[0].lat) lat = Number(list[0].lat);
-          if (lng === null && list[0].lon) lng = Number(list[0].lon);
-          openingHoursRaw = list[0].extratags?.opening_hours ?? null;
+      for (const candidate of buildSearchCandidates(name)) {
+        const searchUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&extratags=1&limit=3&accept-language=ja&countrycodes=jp&q=${encodeURIComponent(
+          candidate,
+        )}`;
+        const sRes = await fetch(searchUrl, { headers: NOMINATIM_HEADERS });
+        if (sRes.ok) {
+          const list = (await sRes.json()) as {
+            name?: string;
+            type?: string;
+            display_name?: string;
+            lat?: string;
+            lon?: string;
+            extratags?: { opening_hours?: string; "bath:type"?: string };
+          }[];
+          if (list[0]) {
+            address = list[0].display_name ?? address;
+            if (lat === null && list[0].lat) lat = Number(list[0].lat);
+            if (lng === null && list[0].lon) lng = Number(list[0].lon);
+            openingHoursRaw = list[0].extratags?.opening_hours ?? openingHoursRaw;
+            osmType =
+              list[0].extratags?.["bath:type"] === "onsen" ? "public_bath" : list[0].type;
+            break;
+          }
         }
       }
     }
@@ -147,6 +229,7 @@ export async function POST(req: Request) {
       if (rRes.ok) {
         const r = (await rRes.json()) as {
           name?: string;
+          type?: string;
           display_name?: string;
           extratags?: { opening_hours?: string };
         };
@@ -155,19 +238,35 @@ export async function POST(req: Request) {
         if (!openingHoursRaw && r.extratags?.opening_hours) {
           openingHoursRaw = r.extratags.opening_hours;
         }
+        if (!osmType && r.type) osmType = r.type;
       }
     }
   } catch {
-    // Nominatim 照会エラー時は URL 抽出情報のみで返却
+    // ignore Nominatim errors
   }
 
+  let businessHours = parseOsmOpeningHours(openingHoursRaw);
+
+  // C. OSM に opening_hours が登録されていなかった場合は、Web検索結果から日本の営業時間・定休日を自動抽出
+  if (name && !businessHours.open && businessHours.closedDays.length === 0) {
+    const webInfo = await fetchWebBusinessHoursAndAddress(name);
+    if (webInfo.rule.open || webInfo.rule.closedDays.length > 0) {
+      businessHours = webInfo.rule;
+    }
+    if (!address && webInfo.address) {
+      address = webInfo.address;
+    }
+  }
+
+  const finalName = name || "Googleマップの地点";
   const result: ResolvedPlace = {
-    name: name || "Googleマップの地点",
+    name: finalName,
     address,
     lat,
     lng,
     place_url: inputUrl,
-    business_hours: parseOsmOpeningHours(openingHoursRaw),
+    suggested_category: guessCategory(finalName, osmType),
+    business_hours: businessHours,
   };
 
   return NextResponse.json(result);

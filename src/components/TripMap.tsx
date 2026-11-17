@@ -10,6 +10,7 @@ import { searchPlaces, reverseGeocode, type GeocodeResult } from "@/lib/geo/geoc
 
 const CATEGORY_COLOR: Record<SpotRow["category"], string> = {
   sightseeing: "#2563eb",
+  onsen: "#e11d48",
   meal: "#ea580c",
   lodging: "#7c3aed",
   transport: "#0891b2",
