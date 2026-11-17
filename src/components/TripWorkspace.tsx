@@ -802,108 +802,74 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         </div>
       </header>
 
-      {/* 日程セグメントピルタブ（候補プール ＋ Day 1 / Day 2 ...） */}
+      {/* 日程セグメントピルタブ（Day 1 / Day 2 ... / 📌候補 のみシンプルに横並び） */}
       {(mainTab === "itinerary" || mainTab === "map") && (
-        <div className="bg-white px-3 py-2 border-b border-slate-200/80 shrink-0 z-10 space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-              {/* 📌 候補プール（日程未定ストック）タブ */}
-              <button
-                type="button"
-                onClick={() => setActiveDayIdx(0)}
-                className={`px-3 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1 ${
-                  activeDay.day_index === 0
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
-                }`}
-              >
-                <span>📌 候補プール</span>
-                <span
-                  className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                    activeDay.day_index === 0
-                      ? "bg-white/20 text-white"
-                      : "bg-indigo-200/70 text-indigo-900"
+        <div className="bg-white px-3.5 py-2 border-b border-slate-200/80 shrink-0 z-10 space-y-1.5">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {doc.days.map((d) => {
+              const active = d.day_index === activeDay.day_index;
+              const dayConflicts = schedule.byDay.get(d.day_index)?.conflicts.length ?? 0;
+              return (
+                <button
+                  key={d.day_index}
+                  type="button"
+                  onClick={() => setActiveDayIdx(d.day_index)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1 shrink-0 ${
+                    active
+                      ? "bg-slate-900 text-white shadow-xs"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
                 >
-                  {poolSpots.length}
-                </span>
-              </button>
-
-              {doc.days.map((d) => {
-                const active = d.day_index === activeDay.day_index;
-                const dayConflicts = schedule.byDay.get(d.day_index)?.conflicts.length ?? 0;
-                return (
-                  <button
-                    key={d.day_index}
-                    type="button"
-                    onClick={() => setActiveDayIdx(d.day_index)}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1 ${
-                      active
-                        ? "bg-slate-900 text-white shadow-xs"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    <span>{d.label}</span>
-                    {d.date && (
-                      <span
-                        className={`text-[10px] font-medium ${
-                          active ? "text-slate-300" : "text-slate-400"
-                        }`}
-                      >
-                        {d.date.slice(5).replace("-", "/")}
-                      </span>
-                    )}
-                    {dayConflicts > 0 && (
-                      <span
-                        className="w-2 h-2 rounded-full bg-red-500 inline-block"
-                        title="時刻超過あり"
-                      />
-                    )}
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={handleAddDay}
-                className="px-3 py-1.5 rounded-full text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 whitespace-nowrap"
-              >
-                ＋日程追加
-              </button>
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              {doc.spots.length > 0 && (
-                <button
-                  type="button"
-                  disabled={autoPlanBusy}
-                  onClick={handleAutoPlanItinerary}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-extrabold shadow-xs hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50"
-                  title="候補プールと全日程のスポットを優先度・営業時間・移動効率に合わせて自動編成します"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>{autoPlanBusy ? "編成中..." : "効率ルート自動編成"}</span>
+                  <span>{d.label}</span>
+                  {d.date && (
+                    <span
+                      className={`text-[10px] font-medium ${
+                        active ? "text-slate-300" : "text-slate-400"
+                      }`}
+                    >
+                      {d.date.slice(5).replace("-", "/")}
+                    </span>
+                  )}
+                  {dayConflicts > 0 && (
+                    <span
+                      className="w-2 h-2 rounded-full bg-red-500 inline-block"
+                      title="時刻超過あり"
+                    />
+                  )}
                 </button>
-              )}
+              );
+            })}
 
-              {/* 旅程 ⇔ マップ ワンタップ切替ピル */}
-              <button
-                type="button"
-                onClick={() => setMainTab(mainTab === "itinerary" ? "map" : "itinerary")}
-                className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-bold shadow-xs hover:bg-blue-700"
+            {/* 📌 候補プール（日程未定ストック）タブ */}
+            <button
+              type="button"
+              onClick={() => setActiveDayIdx(0)}
+              className={`px-3 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1 shrink-0 ${
+                activeDay.day_index === 0
+                  ? "bg-indigo-600 text-white shadow-xs"
+                  : "bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
+              }`}
+            >
+              <span>📌 候補</span>
+              <span
+                className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                  activeDay.day_index === 0
+                    ? "bg-white/20 text-white"
+                    : "bg-indigo-200/70 text-indigo-900"
+                }`}
               >
-                {mainTab === "itinerary" ? (
-                  <>
-                    <MapPin className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">マップを見る</span>
-                  </>
-                ) : (
-                  <>
-                    <ListOrdered className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">旅程に戻る</span>
-                  </>
-                )}
-              </button>
-            </div>
+                {poolSpots.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleAddDay}
+              className="px-3 py-1.5 rounded-full text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 whitespace-nowrap shrink-0"
+              title="日程を追加"
+            >
+              ＋日程
+            </button>
           </div>
 
           {autoPlanMsg && (
@@ -1363,6 +1329,28 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                   <div>
                     <div className="text-xs font-extrabold text-slate-900">しおりを友人に共有</div>
                     <div className="text-[10px] text-slate-500">URL・部屋IDをコピーして招待</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={autoPlanBusy || doc.spots.length === 0}
+                  onClick={() => {
+                    setShowSidebar(false);
+                    void handleAutoPlanItinerary();
+                  }}
+                  className="w-full px-3.5 py-3 rounded-2xl border border-purple-200 bg-purple-50/70 hover:bg-purple-100/70 text-left flex items-center gap-3 transition disabled:opacity-50"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 text-white flex items-center justify-center shrink-0">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-extrabold text-purple-950">
+                      効率ルート自動編成
+                    </div>
+                    <div className="text-[10px] text-purple-700">
+                      優先度・枠タグ・移動時間で最適配置
+                    </div>
                   </div>
                 </button>
 
