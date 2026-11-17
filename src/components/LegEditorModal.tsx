@@ -195,7 +195,7 @@ export default function LegEditorModal({
                       : "bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50"
                   }`}
                 >
-                  🛣️ 高速・有料道路を使う
+                  🛣️ 高速優先（有料道路可）
                 </button>
                 <button
                   type="button"
@@ -209,7 +209,7 @@ export default function LegEditorModal({
                       : "bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50"
                   }`}
                 >
-                  🚗 下道のみ（高速回避）
+                  🚗 高速回避（下道のみ）
                 </button>
               </div>
             </div>

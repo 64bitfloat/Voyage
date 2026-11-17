@@ -159,7 +159,7 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit, onEditL
                       : "bg-blue-50 text-blue-700 border border-blue-200/80"
                   }`}
                 >
-                  {bhRule.avoidTolls ? "下道" : "高速"}
+                  {bhRule.avoidTolls ? "高速回避" : "高速優先"}
                 </span>
               )}
               {onEditLeg && <Pencil className="w-2.5 h-2.5 text-slate-400 ml-0.5" />}
