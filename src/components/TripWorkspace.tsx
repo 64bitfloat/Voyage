@@ -88,58 +88,83 @@ function normalizeDays(doc: TripDoc): TripDoc {
   return { ...doc, days, photos: [] };
 }
 
-export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
-  const [doc, setDoc] = useState<TripDoc>(() => {
-    const base = normalizeDays(initialDoc);
-    if (typeof window !== "undefined") {
-      try {
-        // 1. 共有URLパラメータ (?s=...) があればそこから復元
-        const params = new URLSearchParams(window.location.search);
-        const fromSnap = decodeDocSnapshot(params.get("s"));
-        if (fromSnap && fromSnap.trip.id === base.trip.id) {
-          return normalizeDays(fromSnap);
-        }
-
-        // 2. ローカルキャッシュがあれば優先
-        const cached = localStorage.getItem(`voyage:doc:${base.trip.id}`);
-        if (cached) {
-          const parsed = JSON.parse(cached) as TripDoc;
-          if (parsed?.trip?.id === base.trip.id) {
-            return normalizeDays(parsed);
-          }
-        }
-
-        // 3. トップ画面で入力したタイトル・開始日・終了日のメタ情報があればそこから Day 1..N を再計算
-        const initMeta = localStorage.getItem(`voyage:init:${base.trip.id}`);
-        if (initMeta) {
-          const meta = JSON.parse(initMeta) as {
-            title?: string;
-            start_date?: string | null;
-            end_date?: string | null;
-          };
-          const start = meta.start_date !== undefined ? meta.start_date : base.trip.start_date;
-          const end = meta.end_date !== undefined ? meta.end_date : base.trip.end_date;
-          return {
-            ...base,
-            trip: {
-              ...base.trip,
-              title: meta.title || base.trip.title,
-              start_date: start,
-              end_date: end,
-            },
-            days: initialDays(start, end),
-          };
-        }
-      } catch {
-        // ignore
+function readStoredTrip(base: TripDoc): TripDoc {
+  if (typeof window === "undefined") return base;
+  try {
+    // 1. URLハッシュ (#s=...) またはクエリ (?s=...) に共有スナップショットがあれば最優先で復元
+    const hashStr = window.location.hash.startsWith("#")
+      ? window.location.hash.slice(1)
+      : window.location.hash;
+    const hashParams = new URLSearchParams(hashStr);
+    const searchParams = new URLSearchParams(window.location.search);
+    const snapToken = hashParams.get("s") ?? searchParams.get("s");
+    if (snapToken) {
+      const fromSnap = decodeDocSnapshot(snapToken);
+      if (fromSnap && fromSnap.trip.id === base.trip.id) {
+        return normalizeDays(fromSnap);
       }
     }
-    return base;
-  });
 
+    // 2. ローカル保存済みのしおりデータ (voyage:doc:<id>) があれば復元
+    const cached = localStorage.getItem(`voyage:doc:${base.trip.id}`);
+    if (cached) {
+      const parsed = JSON.parse(cached) as TripDoc;
+      if (parsed?.trip?.id === base.trip.id) {
+        return normalizeDays(parsed);
+      }
+    }
+
+    // 3. トップ画面で新規作成した際のタイトル・開始日・終了日のメタ情報があれば反映
+    const initMeta = localStorage.getItem(`voyage:init:${base.trip.id}`);
+    if (initMeta) {
+      const meta = JSON.parse(initMeta) as {
+        title?: string;
+        start_date?: string | null;
+        end_date?: string | null;
+      };
+      const start = meta.start_date !== undefined ? meta.start_date : base.trip.start_date;
+      const end = meta.end_date !== undefined ? meta.end_date : base.trip.end_date;
+      return {
+        ...base,
+        trip: {
+          ...base.trip,
+          title: meta.title || base.trip.title,
+          start_date: start,
+          end_date: end,
+        },
+        days: initialDays(start, end),
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return base;
+}
+
+export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
+  const [doc, setDoc] = useState<TripDoc>(() => readStoredTrip(normalizeDays(initialDoc)));
+
+  // localStorage と「最近のしおり一覧」へ自動保存する
   useEffect(() => {
     try {
+      if (window.location.hash.includes("s=")) {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
       localStorage.setItem(`voyage:doc:${doc.trip.id}`, JSON.stringify(doc));
+      const rawList = localStorage.getItem("voyage:recent_trips");
+      const list: { id: string; title: string; start_date: string | null; end_date: string | null; updatedAt: number }[] =
+        rawList ? JSON.parse(rawList) : [];
+      const nextList = [
+        {
+          id: doc.trip.id,
+          title: doc.trip.title,
+          start_date: doc.trip.start_date,
+          end_date: doc.trip.end_date,
+          updatedAt: Date.now(),
+        },
+        ...list.filter((x) => x.id !== doc.trip.id),
+      ].slice(0, 20);
+      localStorage.setItem("voyage:recent_trips", JSON.stringify(nextList));
     } catch {
       // ignore quota errors
     }

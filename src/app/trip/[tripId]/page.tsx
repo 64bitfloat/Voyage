@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import TripWorkspace from "@/components/TripWorkspace";
+import TripWorkspaceClient from "@/components/TripWorkspaceClient";
 import { getStore, isUuid } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +13,6 @@ export default async function TripPage({ params }: PageProps) {
   if (!isUuid(tripId)) notFound();
   const store = getStore();
   let doc = await store.getTripDoc(tripId);
-  // Vercel サーバーレス環境で Supabase 未設定（MemoryStore）の場合、
-  // インスタンス間でメモリが共有されないため初期ドキュメントを自動生成し、クライアント側キャッシュと同期させる
   if (!doc && store.kind === "memory") {
     const { initialDays } = await import("@/lib/model/types");
     await store.createTrip(
@@ -31,5 +29,5 @@ export default async function TripPage({ params }: PageProps) {
     doc = await store.getTripDoc(tripId);
   }
   if (!doc) notFound();
-  return <TripWorkspace initialDoc={doc} />;
+  return <TripWorkspaceClient initialDoc={doc} />;
 }

@@ -33,7 +33,8 @@ export default function ShareTripModal({ doc, onClose }: ShareTripModalProps) {
   const shareUrl = useMemo(() => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const snap = encodeDocSnapshot(doc);
-    return `${origin}/trip/${doc.trip.id}?s=${snap}`;
+    // ハッシュ (#s=...) を使うことでサーバーへ長大なURLを送らず確実にクライアント側で復元させる
+    return `${origin}/trip/${doc.trip.id}#s=${snap}`;
   }, [doc]);
 
   async function handleCopy() {

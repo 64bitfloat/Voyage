@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Compass, MapPin, Clock, Sparkles, ArrowRight, Lock } from "lucide-react";
+import Link from "next/link";
+import { Compass, MapPin, Clock, Sparkles, ArrowRight, Lock, Calendar, Trash2 } from "lucide-react";
+
+interface RecentTripItem {
+  id: string;
+  title: string;
+  start_date: string | null;
+  end_date: string | null;
+  updatedAt: number;
+}
 
 export default function HomePage() {
   const router = useRouter();
@@ -12,6 +21,25 @@ export default function HomePage() {
   const [passcode, setPasscode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [recentTrips, setRecentTrips] = useState<RecentTripItem[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem("voyage:recent_trips");
+      return raw ? (JSON.parse(raw) as RecentTripItem[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  function handleRemoveRecent(id: string) {
+    try {
+      const next = recentTrips.filter((t) => t.id !== id);
+      setRecentTrips(next);
+      localStorage.setItem("voyage:recent_trips", JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -75,10 +103,48 @@ export default function HomePage() {
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight">Voyage</h1>
           <p className="text-xs text-slate-600 leading-relaxed">
-            友人とURLだけでリアルタイム共同編集できるモバイルしおり。
+            友人とURLだけで共有・編集できるモバイルしおり。
             <br />
             完成した旅程は構造化JSONでAI（Muse）へ引き渡し、Notionへ登録できます。
           </p>
+        </div>
+
+        {/* 最近開いた・作成したしおり一覧（戻ったときにすぐ再開できる） */}
+        <div suppressHydrationWarning>
+          {recentTrips.length > 0 && (
+            <section className="rounded-3xl bg-white border border-slate-200/90 shadow-md p-4 space-y-2.5">
+              <h2 className="text-xs font-extrabold text-slate-700">最近編集したしおり（続きから再開）</h2>
+              <div className="space-y-2">
+                {recentTrips.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-blue-50/50 px-3.5 py-2.5 transition"
+                  >
+                    <Link href={`/trip/${t.id}`} className="flex-1 min-w-0">
+                      <div className="text-sm font-extrabold text-slate-900 truncate">{t.title}</div>
+                      {t.start_date && (
+                        <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                          <Calendar className="w-3 h-3 text-blue-600" />
+                          <span>
+                            {t.start_date}
+                            {t.end_date ? ` 〜 ${t.end_date}` : ""}
+                          </span>
+                        </div>
+                      )}
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveRecent(t.id)}
+                      className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg"
+                      title="履歴から外す"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
 
         {/* 新規しおり作成カード */}

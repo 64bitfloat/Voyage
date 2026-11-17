@@ -5,8 +5,11 @@ import { useEffect } from "react";
 export default function PwaRegistrar() {
   useEffect(() => {
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {
-        // ignore registration errors in dev
+      // 既存の Service Worker キャッシュが原因で This page couldn't load になるのを防ぐため解除
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        for (const r of regs) {
+          void r.unregister();
+        }
       });
     }
   }, []);
