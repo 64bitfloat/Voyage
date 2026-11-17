@@ -37,7 +37,9 @@ export default function LegEditorModal({
   );
   const [avoidTolls, setAvoidTolls] = useState<boolean>(Boolean(initialBh.avoidTolls));
   const [durationMin, setDurationMin] = useState<number | null>(toSpot.transport_duration_minutes);
-  const [distanceM, setDistanceM] = useState<number | null>(toSpot.transport_distance_m);
+  const [distanceKmStr, setDistanceKmStr] = useState<string>(
+    toSpot.transport_distance_m !== null ? (toSpot.transport_distance_m / 1000).toFixed(1) : "",
+  );
   const [toCoords, setToCoords] = useState<LatLng | null>(
     toSpot.lat !== null && toSpot.lng !== null ? { lat: toSpot.lat, lng: toSpot.lng } : null,
   );
@@ -76,7 +78,7 @@ export default function LegEditorModal({
         avoidTolls: nextMode === "car" && nextAvoidTolls,
       });
       setDurationMin(r.duration_minutes);
-      setDistanceM(r.distance_m);
+      setDistanceKmStr((r.distance_m / 1000).toFixed(1));
     } catch (e) {
       setCalcErr(e instanceof Error ? e.message : "ルート計算に失敗しました");
     } finally {
@@ -93,13 +95,18 @@ export default function LegEditorModal({
         avoidTolls: mode === "car" ? avoidTolls : false,
         routeFromKey,
       });
+      const parsedKm = Number(distanceKmStr);
+      const finalDistanceM =
+        distanceKmStr.trim() === "" || !Number.isFinite(parsedKm)
+          ? null
+          : Math.max(0, Math.round(parsedKm * 1000));
       await onSave({
         ...toSpot,
         lat: toCoords?.lat ?? toSpot.lat,
         lng: toCoords?.lng ?? toSpot.lng,
         transport_mode: mode,
         transport_duration_minutes: durationMin,
-        transport_distance_m: distanceM,
+        transport_distance_m: finalDistanceM,
         transport_note: nextNote,
       });
       onClose();
@@ -254,15 +261,14 @@ export default function LegEditorModal({
               />
             </div>
             <div>
-              <label className="block text-[11px] text-neutral-600 mb-1">距離（m）</label>
+              <label className="block text-[11px] text-neutral-600 mb-1">距離（km）</label>
               <input
                 type="number"
                 min={0}
-                value={distanceM ?? ""}
-                onChange={(e) =>
-                  setDistanceM(e.target.value === "" ? null : Math.max(0, Number(e.target.value)))
-                }
-                placeholder="自動算出"
+                step="0.1"
+                value={distanceKmStr}
+                onChange={(e) => setDistanceKmStr(e.target.value)}
+                placeholder="自動算出（例: 12.5）"
                 className="w-full px-2.5 py-1.5 rounded-lg border border-neutral-300 bg-white text-xs"
               />
             </div>
