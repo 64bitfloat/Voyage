@@ -238,6 +238,13 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   );
   const schedule = useMemo(() => computeTripSchedule(doc.days, doc.spots), [doc.days, doc.spots]);
   const daySchedule = schedule.byDay.get(activeDay.day_index);
+  const checkoutByDay = useMemo(() => {
+    const m = new Map<number, SpotRow | null>();
+    for (const d of doc.days) {
+      m.set(d.day_index, schedule.byDay.get(d.day_index)?.checkoutSpot ?? null);
+    }
+    return m;
+  }, [doc.days, schedule]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -284,23 +291,6 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       });
     }
     notifyChange();
-  }
-
-  function getPrevCoordsFor(spotId: string | null, targetOrder?: number): LatLng | null {
-    const list = daySpots;
-    const idx = spotId ? list.findIndex((s) => s.id === spotId) : (targetOrder ?? list.length);
-    if (idx <= 0) {
-      if (activeDay.departure_lat !== null && activeDay.departure_lng !== null) {
-        return { lat: activeDay.departure_lat, lng: activeDay.departure_lng };
-      }
-      const co = daySchedule?.checkoutSpot;
-      if (co && co.lat !== null && co.lng !== null) {
-        return { lat: co.lat, lng: co.lng };
-      }
-      return null;
-    }
-    const prev = list[idx - 1];
-    return prev && prev.lat !== null && prev.lng !== null ? { lat: prev.lat, lng: prev.lng } : null;
   }
 
   async function recalculateDayRoutes(day: DayRow, ordered: SpotRow[]) {
@@ -478,7 +468,22 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
   async function handleSaveSpot(spot: SpotRow) {
     let finalSpot = spot;
-    const prev = getPrevCoordsFor(editingSpot?.isNew ? null : spot.id, spot.sort_order);
+    const targetDay = doc.days.find((d) => d.day_index === spot.day_index) ?? activeDay;
+    const targetDaySpots = spotsOfDay(doc.spots, targetDay.day_index);
+    const targetCo = checkoutByDay.get(targetDay.day_index) ?? null;
+    const isSameDay = !editingSpot?.isNew && editingSpot?.spot.day_index === spot.day_index;
+    const idxInTarget = isSameDay
+      ? targetDaySpots.findIndex((s) => s.id === spot.id)
+      : targetDaySpots.length;
+    const prevSpot = idxInTarget > 0 ? targetDaySpots[idxInTarget - 1] : null;
+    const prev: LatLng | null =
+      prevSpot && prevSpot.lat !== null && prevSpot.lng !== null
+        ? { lat: prevSpot.lat, lng: prevSpot.lng }
+        : targetDay.departure_lat !== null && targetDay.departure_lng !== null
+          ? { lat: targetDay.departure_lat, lng: targetDay.departure_lng }
+          : targetCo && targetCo.lat !== null && targetCo.lng !== null
+            ? { lat: targetCo.lat, lng: targetCo.lng }
+            : null;
     if (
       finalSpot.transport_duration_minutes === null &&
       prev &&
@@ -504,6 +509,9 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
     if (editingSpot?.isNew) {
       setDoc((d) => ({ ...d, spots: [...d.spots, finalSpot] }));
+      if (finalSpot.day_index !== activeDayIdx) {
+        setActiveDayIdx(finalSpot.day_index);
+      }
       await fetch(`/api/trips/${tripId}/spots`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -514,6 +522,9 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         ...d,
         spots: d.spots.map((x) => (x.id === finalSpot.id ? finalSpot : x)),
       }));
+      if (finalSpot.day_index !== activeDayIdx) {
+        setActiveDayIdx(finalSpot.day_index);
+      }
       await fetch(`/api/trips/${tripId}/spots/${finalSpot.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1119,12 +1130,9 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       {/* スポット追加・編集モーダル */}
       {editingSpot && (
         <SpotEditorModal
-          dayIndex={activeDay.day_index}
-          dayDate={activeDay.date}
-          prevCoords={getPrevCoordsFor(
-            editingSpot.isNew ? null : editingSpot.spot.id,
-            editingSpot.spot.sort_order,
-          )}
+          days={doc.days}
+          allSpots={doc.spots}
+          checkoutByDay={checkoutByDay}
           initial={editingSpot.spot}
           isNew={editingSpot.isNew}
           onSave={handleSaveSpot}

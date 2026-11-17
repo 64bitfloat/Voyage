@@ -1,22 +1,33 @@
 "use client";
 
-import { useState } from "react";
-import { X, Calculator, Star, Link2, Sparkles, Clock } from "lucide-react";
-import type { SpotRow } from "@/lib/model/types";
-import { combineDateTime, toTokyoDate, toTokyoHHMM } from "@/lib/datetime";
+import { useMemo, useState } from "react";
+import {
+  X,
+  Calculator,
+  Star,
+  Link2,
+  Sparkles,
+  Clock,
+  Calendar,
+  AlertTriangle,
+} from "lucide-react";
+import type { DayRow, SpotRow } from "@/lib/model/types";
+import { combineDateTime, toTokyoDate, toTokyoHHMM, toTokyoISO } from "@/lib/datetime";
 import { addDays } from "@/lib/model/types";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
 import {
+  checkBusinessHoursAlert,
   dayNumberToJa,
   deserializeBusinessHours,
   serializeBusinessHours,
   type BusinessHoursRule,
 } from "@/lib/geo/business-hours";
+import { computeDaySchedule, spotsOfDay } from "@/lib/schedule/compute";
 
 interface SpotEditorModalProps {
-  dayIndex: number;
-  dayDate: string | null;
-  prevCoords: LatLng | null;
+  days: DayRow[];
+  allSpots: SpotRow[];
+  checkoutByDay: Map<number, SpotRow | null>;
   initial: SpotRow;
   isNew: boolean;
   onSave: (spot: SpotRow) => Promise<void> | void;
@@ -47,9 +58,18 @@ const MODES: { value: NonNullable<SpotRow["transport_mode"]>; label: string }[] 
   { value: "manual", label: "手動入力" },
 ];
 
+function addMinutesHHMM(hhmm: string, mins: number): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const total = (h * 60 + m + mins) % (24 * 60);
+  const nh = Math.floor(total / 60);
+  const nm = total % 60;
+  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+}
+
 export default function SpotEditorModal({
-  dayDate,
-  prevCoords,
+  days,
+  allSpots,
+  checkoutByDay,
   initial,
   isNew,
   onSave,
@@ -57,7 +77,6 @@ export default function SpotEditorModal({
   onClose,
 }: SpotEditorModalProps) {
   const todayStr = toTokyoDate(new Date());
-  const baseDefaultDate = dayDate ?? todayStr;
   const [spot, setSpot] = useState<SpotRow>(initial);
   const [gmapUrl, setGmapUrl] = useState(initial.place_url ?? "");
   const [resolvingUrl, setResolvingUrl] = useState(false);
@@ -67,6 +86,25 @@ export default function SpotEditorModal({
     deserializeBusinessHours(initial.transport_note),
   );
 
+  // 選択中の日程（Day 1 / Day 2...）
+  const selectedDay: DayRow = useMemo(
+    () =>
+      days.find((d) => d.day_index === spot.day_index) ??
+      days[0] ?? {
+        day_index: 1,
+        label: "Day 1",
+        date: null,
+        departure_point: null,
+        departure_lat: null,
+        departure_lng: null,
+        departure_time: "08:00",
+      },
+    [days, spot.day_index],
+  );
+  const dayDate = selectedDay.date;
+  const baseDefaultDate = dayDate ?? todayStr;
+
+  // 行きたい時刻 / 予約時刻（HH:MM）
   const [resTimeHHMM, setResTimeHHMM] = useState<string>(
     initial.reservation_time ? toTokyoHHMM(initial.reservation_time) : "12:00",
   );
@@ -91,11 +129,87 @@ export default function SpotEditorModal({
   const [calcErr, setCalcErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // 選択中の Day における「1つ前のスポット」と「前の出発予定時刻」を算出
+  const { prevCoords, earliestArrivalHHMM, overrunMinutes } = useMemo(() => {
+    const daySpots = spotsOfDay(allSpots, selectedDay.day_index);
+    const coSpot = checkoutByDay.get(selectedDay.day_index) ?? null;
+    const isSameDayAsInitial = !isNew && initial.day_index === selectedDay.day_index;
+    const idx = isSameDayAsInitial
+      ? daySpots.findIndex((s) => s.id === spot.id)
+      : daySpots.length;
+
+    const precedingSpots = idx > 0 ? daySpots.slice(0, idx) : [];
+    const lastPrev = precedingSpots.length > 0 ? precedingSpots[precedingSpots.length - 1] : null;
+
+    let coords: LatLng | null = null;
+    if (lastPrev && lastPrev.lat !== null && lastPrev.lng !== null) {
+      coords = { lat: lastPrev.lat, lng: lastPrev.lng };
+    } else if (selectedDay.departure_lat !== null && selectedDay.departure_lng !== null) {
+      coords = { lat: selectedDay.departure_lat, lng: selectedDay.departure_lng };
+    } else if (coSpot && coSpot.lat !== null && coSpot.lng !== null) {
+      coords = { lat: coSpot.lat, lng: coSpot.lng };
+    }
+
+    // 前のスポット終了時刻＋移動時間から「最短で到着できる時刻」を計算
+    let earliestHHMM: string | null = null;
+    let overrun = 0;
+    if (selectedDay.date && (selectedDay.departure_time || coSpot?.check_out)) {
+      const sched = computeDaySchedule(selectedDay, precedingSpots, coSpot);
+      if (sched.end) {
+        const prevEndMs = Date.parse(sched.end);
+        const travelMs = (spot.transport_duration_minutes ?? 0) * 60_000;
+        const earliestMs = prevEndMs + travelMs;
+        earliestHHMM = toTokyoHHMM(toTokyoISO(new Date(earliestMs)));
+
+        if (spot.is_fixed && resTimeHHMM) {
+          const targetIso = combineDateTime(selectedDay.date, resTimeHHMM);
+          const targetMs = Date.parse(targetIso);
+          if (earliestMs > targetMs) {
+            overrun = Math.round((earliestMs - targetMs) / 60_000);
+          }
+        }
+      }
+    }
+
+    return { prevCoords: coords, earliestArrivalHHMM: earliestHHMM, overrunMinutes: overrun };
+  }, [
+    allSpots,
+    checkoutByDay,
+    initial.day_index,
+    isNew,
+    resTimeHHMM,
+    selectedDay,
+    spot.id,
+    spot.is_fixed,
+    spot.transport_duration_minutes,
+  ]);
+
+  // フォーム内での営業時間・定休日アラート即時プレビュー
+  const liveBhAlert = useMemo(() => {
+    const checkArr = spot.is_fixed ? resTimeHHMM : earliestArrivalHHMM;
+    const checkDep = checkArr ? addMinutesHHMM(checkArr, spot.stay_minutes) : null;
+    return checkBusinessHoursAlert(bhRule, dayDate, checkArr, checkDep);
+  }, [bhRule, dayDate, earliestArrivalHHMM, resTimeHHMM, spot.is_fixed, spot.stay_minutes]);
+
   const canAutoRoute =
     prevCoords !== null &&
     spot.lat !== null &&
     spot.lng !== null &&
     (spot.transport_mode === "car" || spot.transport_mode === "walk");
+
+  async function handleSelectDay(newDayIdx: number) {
+    const targetDay = days.find((d) => d.day_index === newDayIdx);
+    const targetDaySpots = spotsOfDay(allSpots, newDayIdx).filter((s) => s.id !== spot.id);
+    setSpot((prev) => ({
+      ...prev,
+      day_index: newDayIdx,
+      sort_order: newDayIdx === initial.day_index && !isNew ? prev.sort_order : targetDaySpots.length,
+    }));
+    if (targetDay?.date && spot.category === "lodging") {
+      setCheckInDate(targetDay.date);
+      setCheckOutDate(addDays(targetDay.date, 1));
+    }
+  }
 
   async function handleResolveGoogleMapUrl() {
     if (!gmapUrl.trim()) return;
@@ -139,7 +253,6 @@ export default function SpotEditorModal({
         setBhRule(data.business_hours);
       }
 
-      // 座標が取れたら前の地点からの移動時間も自動算出を試みる
       if (
         prevCoords &&
         data.lat !== null &&
@@ -267,7 +380,7 @@ export default function SpotEditorModal({
                 type="text"
                 value={gmapUrl}
                 onChange={(e) => setGmapUrl(e.target.value)}
-                placeholder="https://maps.app.goo.gl/... または GoogleマップURL"
+                placeholder="https://maps.app.goo.gl/... または share.google/..."
                 className="flex-1 px-3 py-1.5 rounded-xl border border-blue-200 bg-white text-xs"
               />
               <button
@@ -283,6 +396,42 @@ export default function SpotEditorModal({
             {resolveMsg && (
               <p className="text-[11px] font-semibold text-blue-900">{resolveMsg}</p>
             )}
+          </div>
+
+          {/* 旅程の何日目に行くか（ここで Day 1 / Day 2... を変更可能） */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-neutral-700 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              <span>訪問する日程（何日目に行くか）</span>
+            </label>
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+              {days.map((d) => {
+                const active = d.day_index === spot.day_index;
+                return (
+                  <button
+                    key={d.day_index}
+                    type="button"
+                    onClick={() => handleSelectDay(d.day_index)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border whitespace-nowrap transition ${
+                      active
+                        ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span>{d.label}</span>
+                    {d.date && (
+                      <span
+                        className={`ml-1 text-[10px] font-normal ${
+                          active ? "text-slate-300" : "text-slate-400"
+                        }`}
+                      >
+                        ({d.date.slice(5).replace("-", "/")})
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* スポット名 + メイン目的地フラグ */}
@@ -312,7 +461,7 @@ export default function SpotEditorModal({
             />
           </div>
 
-          {/* 状態（決まった / 候補 / 未定）: 第2章・第5.3章の必須構造化項目 */}
+          {/* 状態（決まった / 候補 / 未定） */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-neutral-700">
               決定ステータス（Notion連携用）
@@ -449,7 +598,85 @@ export default function SpotEditorModal({
             </div>
           )}
 
-          {/* 営業時間・定休日（自動取得＋手動調整、予定時刻が範囲外ならアラート表示） */}
+          {/* 何時ごろ行きたいか（希望到着時刻・予約時刻）＆ 滞在時間 */}
+          {!(spot.category === "lodging" && hasCheckInOut) && (
+            <div className="rounded-xl bg-indigo-50/60 border border-indigo-200 p-3 space-y-2.5">
+              <div className="flex items-center justify-between flex-wrap gap-1">
+                <span className="text-xs font-bold text-indigo-950 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>訪問時間・滞在時間（何時ごろ行きたいか）</span>
+                </span>
+                {earliestArrivalHHMM && (
+                  <span className="text-[11px] font-mono text-indigo-800 bg-white px-2 py-0.5 rounded border border-indigo-200">
+                    前の予定からの到着見込み: <strong>{earliestArrivalHHMM}</strong>
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-indigo-950">
+                      行きたい時刻 / 予約時刻
+                    </label>
+                    <label className="inline-flex items-center gap-1 text-xs font-bold text-indigo-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={spot.is_fixed}
+                        onChange={(e) => setSpot((s) => ({ ...s, is_fixed: e.target.checked }))}
+                      />
+                      時間を指定する
+                    </label>
+                  </div>
+                  <input
+                    type="time"
+                    disabled={!spot.is_fixed}
+                    value={resTimeHHMM}
+                    onChange={(e) => setResTimeHHMM(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-indigo-200 bg-white font-mono disabled:bg-neutral-100 disabled:text-neutral-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-indigo-950 mb-1">
+                    滞在時間（分）
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={5}
+                    value={spot.stay_minutes}
+                    onChange={(e) =>
+                      setSpot((s) => ({
+                        ...s,
+                        stay_minutes: Math.max(0, Number(e.target.value) || 0),
+                      }))
+                    }
+                    className="w-full px-3 py-2 rounded-xl border border-indigo-200 bg-white font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* 旅程的に無理がある場合のリアルタイム警告 */}
+              {overrunMinutes > 0 && (
+                <div className="flex items-start gap-1.5 rounded-xl bg-red-600 text-white px-3 py-2 text-xs font-bold shadow-xs">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    ⚠️ 前の予定からの移動が間に合いません：{overrunMinutes}分超過（指定 {resTimeHHMM}{" "}
+                    / 最短到着見込み {earliestArrivalHHMM}）
+                  </span>
+                </div>
+              )}
+              {liveBhAlert && (
+                <div className="flex items-start gap-1.5 rounded-xl bg-amber-600 text-white px-3 py-2 text-xs font-bold shadow-xs">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{liveBhAlert}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 営業時間・定休日（自動取得＋手動調整） */}
           {spot.category !== "lodging" && (
             <div className="rounded-xl bg-amber-50/60 border border-amber-200 p-3 space-y-2.5">
               <div className="flex items-center justify-between flex-wrap gap-1">
@@ -538,7 +765,12 @@ export default function SpotEditorModal({
                   type="button"
                   onClick={() => {
                     setSpot((s) => ({ ...s, transport_mode: m.value }));
-                    if ((m.value === "car" || m.value === "walk") && prevCoords && spot.lat !== null && spot.lng !== null) {
+                    if (
+                      (m.value === "car" || m.value === "walk") &&
+                      prevCoords &&
+                      spot.lat !== null &&
+                      spot.lng !== null
+                    ) {
                       void handleAutoRoute(m.value);
                     }
                   }}
@@ -563,7 +795,8 @@ export default function SpotEditorModal({
                   onChange={(e) =>
                     setSpot((s) => ({
                       ...s,
-                      transport_duration_minutes: e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
+                      transport_duration_minutes:
+                        e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
                     }))
                   }
                   placeholder="例: 30"
@@ -579,7 +812,8 @@ export default function SpotEditorModal({
                   onChange={(e) =>
                     setSpot((s) => ({
                       ...s,
-                      transport_distance_m: e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
+                      transport_distance_m:
+                        e.target.value === "" ? null : Math.max(0, Number(e.target.value)),
                     }))
                   }
                   placeholder="自動算出"
@@ -589,52 +823,6 @@ export default function SpotEditorModal({
             </div>
             {calcErr && <p className="text-xs text-red-600">{calcErr}</p>}
           </div>
-
-          {/* 滞在時間 & 予約時間（固定フラグ） */}
-          {/* 宿泊でチェックイン・チェックアウト時間を指定している場合は滞在時間・予約時刻の設定は不要 */}
-          {!(spot.category === "lodging" && hasCheckInOut) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                  滞在時間（分）
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step={5}
-                  value={spot.stay_minutes}
-                  onChange={(e) =>
-                    setSpot((s) => ({
-                      ...s,
-                      stay_minutes: Math.max(0, Number(e.target.value) || 0),
-                    }))
-                  }
-                  className="w-full px-3 py-2 rounded-xl border border-neutral-300"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-neutral-700">予約時刻（固定）</label>
-                  <label className="inline-flex items-center gap-1 text-xs text-neutral-700">
-                    <input
-                      type="checkbox"
-                      checked={spot.is_fixed}
-                      onChange={(e) => setSpot((s) => ({ ...s, is_fixed: e.target.checked }))}
-                    />
-                    予約あり
-                  </label>
-                </div>
-                <input
-                  type="time"
-                  disabled={!spot.is_fixed}
-                  value={resTimeHHMM}
-                  onChange={(e) => setResTimeHHMM(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-neutral-300 disabled:bg-neutral-100 disabled:text-neutral-400"
-                />
-              </div>
-            </div>
-          )}
 
           {/* メモ */}
           <div>

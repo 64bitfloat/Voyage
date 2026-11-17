@@ -197,7 +197,7 @@ export const UpdateTripInput = TripRowSchema.pick({
 export const UpsertDayInput = DayRowSchema.omit({ day_index: true }).partial();
 
 export const CreateSpotInput = SpotRowSchema;
-export const UpdateSpotInput = SpotRowSchema.omit({ id: true, day_index: true }).partial();
+export const UpdateSpotInput = SpotRowSchema.omit({ id: true }).partial();
 
 export const ReorderSpotsInput = z.object({
   day_index: z.number().int().nonnegative(),
