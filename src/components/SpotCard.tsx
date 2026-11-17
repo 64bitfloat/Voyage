@@ -84,13 +84,23 @@ interface SpotCardProps {
   spot: SpotRow;
   dayDate: string | null;
   timing: SpotTiming | undefined;
+  reorderMode?: boolean;
   onEdit: (spot: SpotRow) => void;
   onEditLeg?: (spot: SpotRow) => void;
 }
 
-export default function SpotCard({ index, spot, dayDate, timing, onEdit, onEditLeg }: SpotCardProps) {
+export default function SpotCard({
+  index,
+  spot,
+  dayDate,
+  timing,
+  reorderMode = false,
+  onEdit,
+  onEditLeg,
+}: SpotCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: spot.id,
+    disabled: !reorderMode,
   });
 
   const style = {
@@ -333,17 +343,19 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit, onEditL
               {spot.memo && <p className="text-xs text-slate-600 line-clamp-2">{spot.memo}</p>}
             </button>
 
-            {/* 右端アクション列（並び替えハンドル＋ワンタップ道案内） */}
+            {/* 右端アクション列（順番編集モード時のみドラッグハンドル表示＋ワンタップ道案内） */}
             <div className="flex flex-col items-end justify-between self-stretch shrink-0 gap-2">
-              <button
-                type="button"
-                aria-label="並び替え"
-                {...attributes}
-                {...listeners}
-                className="p-1.5 rounded-xl text-slate-300 hover:text-slate-600 hover:bg-slate-100 touch-none cursor-grab active:cursor-grabbing"
-              >
-                <GripVertical className="w-4 h-4" />
-              </button>
+              {reorderMode && (
+                <button
+                  type="button"
+                  aria-label="並び替え"
+                  {...attributes}
+                  {...listeners}
+                  className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 touch-none cursor-grab active:cursor-grabbing"
+                >
+                  <GripVertical className="w-4 h-4" />
+                </button>
+              )}
               {gmapNavUrl && (
                 <a
                   href={gmapNavUrl}
