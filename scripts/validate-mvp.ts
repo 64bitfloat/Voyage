@@ -9,7 +9,12 @@ import { initialDays, newSpot, type TripDoc } from "../src/lib/model/types";
 import { computeDaySchedule } from "../src/lib/schedule/compute";
 import { buildExportFromDoc } from "../src/lib/model/to-export";
 import { renderExportMarkdown, validateExport } from "../src/lib/export";
-import { parseJapaneseBusinessHoursFromText, checkBusinessHoursAlert } from "../src/lib/geo/business-hours";
+import {
+  parseJapaneseBusinessHoursFromText,
+  checkBusinessHoursAlert,
+  serializeBusinessHours,
+} from "../src/lib/geo/business-hours";
+import { autoBuildEfficientItinerary } from "../src/lib/schedule/auto-planner";
 
 const tripId = "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e01";
 const spot1Id = "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e02";
@@ -189,4 +194,79 @@ assert.match(checkBusinessHoursAlert(bh, "2026-12-16", "20:30", "21:30") ?? "", 
 // 水曜日 (2026-12-16) の 14:00〜15:30 の場合 → アラートなし (null)
 assert.equal(checkBusinessHoursAlert(bh, "2026-12-16", "14:00", "15:30"), null);
 
-console.log("✅ 段階2・段階3（全エンティティ・スケジュール破綻検知・エクスポート・Markdown生成・営業時間/定休日自動抽出）の検証に合格しました");
+// 5. 「どっちか1つ」選抜＆「複数枠タグ振り分け」の自動編成テスト
+const lunchTag = {
+  id: "day1-lunch",
+  label: "1日目昼食",
+  dayIndex: 1,
+  windowStart: "11:30",
+  windowEnd: "13:30",
+};
+const dinnerTag = {
+  id: "day1-dinner",
+  label: "1日目夕食",
+  dayIndex: 1,
+  windowStart: "17:30",
+  windowEnd: "20:00",
+};
+const candA = newSpot({
+  id: "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e91",
+  day_index: 0,
+  name: "そば処A（昼食候補1）",
+  category: "meal",
+  status: "candidate",
+  lat: 35.491,
+  lng: 138.601,
+  stay_minutes: 60,
+  transport_note: serializeBusinessHours({
+    open: "11:00",
+    close: "15:00",
+    closedDays: [],
+    rawText: "",
+    slotTags: [lunchTag],
+  }),
+});
+const candB = newSpot({
+  id: "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e92",
+  day_index: 0,
+  name: "ほうとう処B（昼・夜どちらも可）",
+  category: "meal",
+  status: "candidate",
+  lat: 35.495,
+  lng: 138.605,
+  stay_minutes: 60,
+  transport_note: serializeBusinessHours({
+    open: "11:00",
+    close: "20:00",
+    closedDays: [],
+    rawText: "",
+    slotTags: [lunchTag, dinnerTag],
+  }),
+});
+const candC = newSpot({
+  id: "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e93",
+  day_index: 0,
+  name: "遠い定食屋C（昼食候補3・落選するはず）",
+  category: "meal",
+  status: "undecided",
+  lat: 36.2,
+  lng: 139.2,
+  stay_minutes: 60,
+  transport_note: serializeBusinessHours({
+    open: "11:00",
+    close: "15:00",
+    closedDays: [],
+    rawText: "",
+    slotTags: [lunchTag],
+  }),
+});
+
+autoBuildEfficientItinerary([days[0]], [candA, candB, candC], true).then((plan) => {
+  const day1Scheduled = plan.spots.filter((s) => s.day_index === 1);
+  const poolRemaining = plan.spots.filter((s) => s.day_index === 0);
+  // 1日目昼食枠1軒 + 1日目夕食枠1軒 = 計2軒がDay1に採用され、残りの昼食候補1軒は候補プール(day_index=0)に残る
+  assert.equal(day1Scheduled.length, 2);
+  assert.equal(poolRemaining.length, 1);
+  assert.equal(poolRemaining[0].id, candC.id);
+  console.log("✅ 段階2・段階3（全エンティティ・スケジュール破綻検知・エクスポート・営業時間抽出・枠タグ自動選抜/振り分け）の検証に合格しました");
+});

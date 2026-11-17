@@ -1,10 +1,13 @@
 /**
  * 行きたい場所（候補プール day_index=0 ＋ 各Dayのスポット）から、
- * 優先度・定休日・営業時間・宿泊チェックイン時刻・移動距離（一筆書き効率）を考慮して
- * なるべく多く回れる最適な旅程を自動編成するオプティマイザ
+ * - 「枠タグ（例: 1日目昼食 / 2日目温泉）」による「どっちか1つ選抜」＆「複数枠への振り分け」
+ * - 優先度（★メイン / 決まった / 候補 / 未定）
+ * - 定休日・営業時間・枠タグの時間帯（windowStart〜windowEnd）
+ * - 宿泊チェックイン時刻・移動距離（一筆書き効率）
+ * をすべて考慮して最適な旅程を自動編成するオプティマイザ
  */
 import type { DayRow, SpotRow } from "../model/types";
-import { deserializeBusinessHours } from "../geo/business-hours";
+import { deserializeBusinessHours, type ChoiceSlotTag } from "../geo/business-hours";
 import { toTokyoDate, toTokyoHHMM } from "../datetime";
 import { getRouteProvider, type LatLng } from "../routing";
 
@@ -14,10 +17,9 @@ export interface AutoPlanSummary {
   message: string;
 }
 
-const MIN_PER_KM_CAR = 1.4; // 直線距離からの概算（道路係数込みで約42km/h相当）
+const MIN_PER_KM_CAR = 1.4;
 const MIN_PER_KM_WALK = 15;
 
-/** 2点間の直線距離 (km) */
 function haversineKm(a: LatLng, b: LatLng): number {
   const R = 6371;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
@@ -30,9 +32,13 @@ function haversineKm(a: LatLng, b: LatLng): number {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 
-function estimateTravelMinutes(from: LatLng | null, to: LatLng | null, mode: SpotRow["transport_mode"]): number {
+function estimateTravelMinutes(
+  from: LatLng | null,
+  to: LatLng | null,
+  mode: SpotRow["transport_mode"],
+): number {
   if (!from || !to) return 20;
-  const km = haversineKm(from, to) * 1.3; // 道路迂回係数 1.3
+  const km = haversineKm(from, to) * 1.3;
   const rate = mode === "walk" ? MIN_PER_KM_WALK : MIN_PER_KM_CAR;
   return Math.max(5, Math.round(km * rate));
 }
@@ -42,7 +48,6 @@ function hhmmToMin(hhmm: string): number {
   return h * 60 + m;
 }
 
-/** スポットの優先度スコア（高いほど優先して旅程に組み込む） */
 export function spotPriorityScore(s: SpotRow): number {
   let score = 0;
   if (s.is_main) score += 100;
@@ -53,7 +58,6 @@ export function spotPriorityScore(s: SpotRow): number {
   return score;
 }
 
-/** 指定された日付（YYYY-MM-DD）がそのスポットの定休日かどうか */
 function isClosedOnDate(spot: SpotRow, dateStr: string | null): boolean {
   if (!dateStr) return false;
   const bh = deserializeBusinessHours(spot.transport_note);
@@ -63,29 +67,41 @@ function isClosedOnDate(spot: SpotRow, dateStr: string | null): boolean {
   return bh.closedDays.includes(dow);
 }
 
-/**
- * 指定された時刻（分）から滞在した場合に営業時間内に収まるか、
- * 開店前なら開店時刻まで待った開始時刻（分）を返す。営業時間外（閉店後）なら null を返す。
- */
 function fitWithinBusinessHours(
   spot: SpotRow,
   arrivalMin: number,
+  slotTag?: ChoiceSlotTag,
 ): { startMin: number; departMin: number } | null {
   const bh = deserializeBusinessHours(spot.transport_note);
   let startMin = arrivalMin;
 
-  // 固定予約・行きたい時刻が指定されている場合
+  // 枠タグ（例: 1日目昼食 11:30〜13:30）が指定されている場合、その枠の開始〜終了時間帯に合わせる
+  if (slotTag) {
+    const wStart = hhmmToMin(slotTag.windowStart);
+    const wEnd = hhmmToMin(slotTag.windowEnd);
+    // 枠の開始より少し早く着いた場合（75分以内の待ち）は枠開始時刻に合わせる
+    if (startMin < wStart) {
+      if (wStart - startMin <= 75) {
+        startMin = wStart;
+      } else {
+        return null;
+      }
+    }
+    // 枠の終了時刻を30分以上過ぎてしまう場合はこの枠には入らない
+    if (startMin > wEnd + 30) {
+      return null;
+    }
+  }
+
   if (spot.is_fixed && spot.reservation_time) {
     const resMin = hhmmToMin(toTokyoHHMM(spot.reservation_time));
-    // 予約時刻に15分以上遅れる場合は不可
     if (arrivalMin > resMin + 15) return null;
-    startMin = Math.max(arrivalMin, resMin);
+    startMin = Math.max(startMin, resMin);
   }
 
   if (bh.open) {
     const openMin = hhmmToMin(bh.open);
     if (startMin < openMin) {
-      // 開店まで60分以内の待ちなら待って入店、それ以上早すぎる場合は今は別のスポットを先にする
       if (openMin - startMin <= 60) {
         startMin = openMin;
       } else {
@@ -107,7 +123,7 @@ function fitWithinBusinessHours(
 
 /**
  * すべてのスポット（候補プール day_index===0 を含む）から、
- * Day 1..N の最適ルートを自動編成して新しい SpotRow[] を返す
+ * 枠タグ（「1日目昼食」「2日目温泉」等の択一・振り分け枠）と移動効率を考慮して自動編成する
  */
 export async function autoBuildEfficientItinerary(
   days: DayRow[],
@@ -122,11 +138,9 @@ export async function autoBuildEfficientItinerary(
     };
   }
 
-  // 宿泊スポットは日付（check_in日 または既存の day_index）を固定アンカーとして扱う
   const lodgingSpots = allSpots.filter((s) => s.category === "lodging");
   const normalSpots = allSpots.filter((s) => s.category !== "lodging");
 
-  // 自動編成対象のプール（includeAlreadyAssigned=true なら全スポットを最適再配置、false なら候補プール day_index===0 のみ追加配置）
   const fixedDaySpotsMap = new Map<number, SpotRow[]>();
   for (const d of tripDays) fixedDaySpotsMap.set(d.day_index, []);
 
@@ -141,7 +155,6 @@ export async function autoBuildEfficientItinerary(
     }
   }
 
-  // 宿泊スポットを該当Dayに割り当て（check_inの日付が一致するDayがあればそこへ、なければ既存のday_indexまたはDay1へ）
   const lodgingByDay = new Map<number, SpotRow>();
   for (const l of lodgingSpots) {
     let targetDayIdx = l.day_index >= 1 ? l.day_index : 1;
@@ -155,6 +168,9 @@ export async function autoBuildEfficientItinerary(
 
   const remaining = new Set<string>(pool.map((s) => s.id));
   const poolById = new Map<string, SpotRow>(pool.map((s) => [s.id, s]));
+  // 既に埋まった枠タグID（例: "day1-lunch" に1つ採用されたら、他の "day1-lunch" 専用の候補は採用しない）
+  const filledSlotIds = new Set<string>();
+
   const resultSpots: SpotRow[] = [];
   let scheduledCount = 0;
 
@@ -163,7 +179,6 @@ export async function autoBuildEfficientItinerary(
     const prevDayLodging = di > 0 ? lodgingByDay.get(tripDays[di - 1].day_index) : undefined;
     const tonightLodging = lodgingByDay.get(day.day_index);
 
-    // その日の開始時刻（分）と開始座標
     let cursorMin = day.departure_time
       ? hhmmToMin(day.departure_time)
       : prevDayLodging?.check_out
@@ -177,25 +192,25 @@ export async function autoBuildEfficientItinerary(
           ? { lat: prevDayLodging.lat, lng: prevDayLodging.lng }
           : null;
 
-    // その日の活動終了リミット（宿泊のチェックイン予定時刻、なければ 20:30）
     const dayEndLimitMin = tonightLodging?.check_in
       ? Math.max(cursorMin + 120, hhmmToMin(toTokyoHHMM(tonightLodging.check_in)))
       : 20 * 60 + 30;
 
     const chosenForDay: SpotRow[] = [...(fixedDaySpotsMap.get(day.day_index) ?? [])];
 
-    // 貪欲＋優先度・距離・時間帯スコアリングで1スポットずつ順番に組み込む
     while (remaining.size > 0) {
       let bestSpot: SpotRow | null = null;
       let bestScore = -Infinity;
       let bestDepartMin = cursorMin;
       let bestTravelMin = 20;
+      let bestUsedSlotId: string | null = null;
 
       for (const id of remaining) {
         const cand = poolById.get(id)!;
-
-        // 定休日の日はスキップ
         if (isClosedOnDate(cand, day.date)) continue;
+
+        const bh = deserializeBusinessHours(cand.transport_note);
+        const slotTags = bh.slotTags ?? [];
 
         const candCoords: LatLng | null =
           cand.lat !== null && cand.lng !== null ? { lat: cand.lat, lng: cand.lng } : null;
@@ -204,11 +219,6 @@ export async function autoBuildEfficientItinerary(
           estimateTravelMinutes(currentCoords, candCoords, cand.transport_mode ?? "car");
         const arrivalMin = cursorMin + travelMin;
 
-        // 営業時間・予約時刻との適合チェック
-        const fit = fitWithinBusinessHours(cand, arrivalMin);
-        if (!fit) continue;
-
-        // このスポットに寄ったあと、今夜の宿（または1日の終了リミット）に間に合うか
         const toLodgingMin =
           tonightLodging && tonightLodging.lat !== null && tonightLodging.lng !== null && candCoords
             ? estimateTravelMinutes(
@@ -217,14 +227,50 @@ export async function autoBuildEfficientItinerary(
                 "car",
               )
             : 0;
-        if (fit.departMin + toLodgingMin > dayEndLimitMin + 30) {
+
+        // ケースA: 枠タグ（例: 「1日目昼食」「1日目夕食」など）が設定されているスポット
+        if (slotTags.length > 0) {
+          // この日（day.day_index）に該当し、かつまだ埋まっていない枠タグだけを試す
+          const availableSlotsForToday = slotTags.filter(
+            (st) =>
+              !filledSlotIds.has(st.id) &&
+              (st.dayIndex === null || st.dayIndex === day.day_index),
+          );
+          if (availableSlotsForToday.length === 0) continue;
+
+          for (const st of availableSlotsForToday) {
+            const fit = fitWithinBusinessHours(cand, arrivalMin, st);
+            if (!fit) continue;
+            if (fit.departMin + toLodgingMin > dayEndLimitMin + 30) continue;
+
+            const wStart = hhmmToMin(st.windowStart);
+            const wEnd = hhmmToMin(st.windowEnd);
+            const inIdealWindow = fit.startMin >= wStart && fit.startMin <= wEnd;
+            const waitPenalty = Math.max(0, fit.startMin - arrivalMin) * 0.8;
+
+            // 枠の時間帯にぴったり入る候補を強く優遇し、移動ロス・待ち時間が少ない1軒を選抜する
+            const score =
+              spotPriorityScore(cand) * 2 +
+              (inIdealWindow ? 95 : 20) -
+              travelMin * 1.5 -
+              waitPenalty;
+
+            if (score > bestScore) {
+              bestScore = score;
+              bestSpot = cand;
+              bestDepartMin = fit.departMin;
+              bestTravelMin = travelMin;
+              bestUsedSlotId = st.id;
+            }
+          }
           continue;
         }
 
-        // スコア計算:
-        //   基本優先度（メイン・決定・候補）
-        //   − 移動時間ペナルティ（近い場所ほど高スコア＝効率的なルート）
-        //   ＋ 食事ボーナス（昼11:00〜13:30、夜17:00〜19:30に食事カテゴリが来ると加点）
+        // ケースB: 枠タグが設定されていない一般スポット
+        const fit = fitWithinBusinessHours(cand, arrivalMin);
+        if (!fit) continue;
+        if (fit.departMin + toLodgingMin > dayEndLimitMin + 30) continue;
+
         let score = spotPriorityScore(cand) * 2 - travelMin * 1.5;
 
         if (cand.category === "meal") {
@@ -235,7 +281,6 @@ export async function autoBuildEfficientItinerary(
         }
 
         if (cand.category === "onsen" && fit.startMin >= 14 * 60) {
-          // 温泉は午後〜夕方に寄ると自然な流れになるよう微加点
           score += 15;
         }
 
@@ -244,12 +289,16 @@ export async function autoBuildEfficientItinerary(
           bestSpot = cand;
           bestDepartMin = fit.departMin;
           bestTravelMin = travelMin;
+          bestUsedSlotId = null;
         }
       }
 
       if (!bestSpot) break;
 
       remaining.delete(bestSpot.id);
+      if (bestUsedSlotId) {
+        filledSlotIds.add(bestUsedSlotId);
+      }
       scheduledCount++;
       chosenForDay.push({
         ...bestSpot,
@@ -264,7 +313,6 @@ export async function autoBuildEfficientItinerary(
       }
     }
 
-    // その日の最後に宿泊スポットを追加
     if (tonightLodging) {
       const lCoords =
         tonightLodging.lat !== null && tonightLodging.lng !== null
@@ -282,7 +330,6 @@ export async function autoBuildEfficientItinerary(
       });
     }
 
-    // 最後に OSRM で実ルート移動時間・距離を精密更新
     let prev: LatLng | null =
       day.departure_lat !== null && day.departure_lng !== null
         ? { lat: day.departure_lat, lng: day.departure_lng }
@@ -300,7 +347,11 @@ export async function autoBuildEfficientItinerary(
         (s.transport_mode === "car" || s.transport_mode === "walk")
       ) {
         try {
-          const r = await getRouteProvider().route(prev, { lat: s.lat, lng: s.lng }, s.transport_mode);
+          const r = await getRouteProvider().route(
+            prev,
+            { lat: s.lat, lng: s.lng },
+            s.transport_mode,
+          );
           s.transport_duration_minutes = r.duration_minutes;
           s.transport_distance_m = r.distance_m;
         } catch {
@@ -314,7 +365,6 @@ export async function autoBuildEfficientItinerary(
     }
   }
 
-  // 時間内に収まらなかったスポットは候補プール（day_index = 0）に残す
   let poolOrder = 0;
   for (const id of remaining) {
     const s = poolById.get(id)!;
@@ -326,10 +376,11 @@ export async function autoBuildEfficientItinerary(
   }
 
   const overflowCount = remaining.size;
+  const slotNote = filledSlotIds.size > 0 ? `（枠タグ ${filledSlotIds.size} 枠を最適選抜）` : "";
   const message =
     overflowCount === 0
-      ? `✨ 全 ${scheduledCount} カ所のスポットを優先度・営業時間・移動効率に合わせて自動編成しました！`
-      : `✨ 優先度の高い ${scheduledCount} カ所を旅程に組み込みました（時間に収まらない ${overflowCount} カ所は「候補プール」に残しています）`;
+      ? `✨ 全 ${scheduledCount} カ所を自動編成しました！${slotNote}`
+      : `✨ ${scheduledCount} カ所を旅程に採用しました${slotNote}（別候補・時間外の ${overflowCount} カ所は「候補プール」に控えています）`;
 
   return {
     spots: resultSpots,

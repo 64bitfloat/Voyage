@@ -256,6 +256,15 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit }: SpotC
                       : ""}
                   </span>
                 )}
+                {(bhRule.slotTags ?? []).map((st) => (
+                  <span
+                    key={st.id}
+                    className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200"
+                    title={`目安時間帯: ${st.windowStart}〜${st.windowEnd}`}
+                  >
+                    🎯 {st.label} ({st.windowStart}-{st.windowEnd})
+                  </span>
+                ))}
               </div>
 
               <div className="text-sm font-extrabold text-slate-900 truncate">{spot.name}</div>

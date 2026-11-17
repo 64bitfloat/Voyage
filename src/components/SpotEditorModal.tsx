@@ -16,12 +16,14 @@ import { combineDateTime, toTokyoDate, toTokyoHHMM, toTokyoISO } from "@/lib/dat
 import { addDays } from "@/lib/model/types";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
 import {
+  buildDefaultSlotPresets,
   checkBusinessHoursAlert,
   checkLodgingPolicyAlert,
   dayNumberToJa,
   deserializeBusinessHours,
   serializeBusinessHours,
   type BusinessHoursRule,
+  type ChoiceSlotTag,
 } from "@/lib/geo/business-hours";
 import { computeDaySchedule, spotsOfDay } from "@/lib/schedule/compute";
 
@@ -86,6 +88,67 @@ export default function SpotEditorModal({
   const [bhRule, setBhRule] = useState<BusinessHoursRule>(() =>
     deserializeBusinessHours(initial.transport_note),
   );
+  const [customSlotName, setCustomSlotName] = useState("");
+  const [customSlotStart, setCustomSlotStart] = useState("12:00");
+  const [customSlotEnd, setCustomSlotEnd] = useState("14:00");
+
+  // 現在の旅行に含まれる全スポットから使われている枠タグ＋標準プリセット枠タグを統合
+  const availableSlotPresets: ChoiceSlotTag[] = useMemo(() => {
+    const dayNums = days.filter((d) => d.day_index >= 1).map((d) => d.day_index);
+    const presets = buildDefaultSlotPresets(dayNums.length > 0 ? dayNums : [1, 2]);
+    const map = new Map<string, ChoiceSlotTag>(presets.map((p) => [p.id, p]));
+    for (const s of allSpots) {
+      const b = deserializeBusinessHours(s.transport_note);
+      for (const st of b.slotTags ?? []) {
+        map.set(st.id, st);
+      }
+    }
+    for (const st of bhRule.slotTags ?? []) {
+      map.set(st.id, st);
+    }
+    return [...map.values()];
+  }, [allSpots, bhRule.slotTags, days]);
+
+  function toggleSlotTag(preset: ChoiceSlotTag) {
+    setBhRule((prev) => {
+      const current = prev.slotTags ?? [];
+      const exists = current.some((x) => x.id === preset.id);
+      const next = exists
+        ? current.filter((x) => x.id !== preset.id)
+        : [...current, preset];
+      return { ...prev, slotTags: next };
+    });
+  }
+
+  function updateSlotWindow(id: string, field: "windowStart" | "windowEnd", val: string) {
+    setBhRule((prev) => ({
+      ...prev,
+      slotTags: (prev.slotTags ?? []).map((x) =>
+        x.id === id ? { ...x, [field]: val } : x,
+      ),
+    }));
+  }
+
+  function handleAddCustomSlotTag() {
+    const label = customSlotName.trim();
+    if (!label) return;
+    const dayMatch = label.match(/^(\d+)日目|^Day\s*(\d+)/i);
+    const dayIdx = dayMatch ? Number(dayMatch[1] ?? dayMatch[2]) : null;
+    const id = `custom-${label}`;
+    const newTag: ChoiceSlotTag = {
+      id,
+      label,
+      dayIndex: dayIdx,
+      windowStart: customSlotStart || "12:00",
+      windowEnd: customSlotEnd || "14:00",
+    };
+    setBhRule((prev) => {
+      const current = prev.slotTags ?? [];
+      if (current.some((x) => x.id === id)) return prev;
+      return { ...prev, slotTags: [...current, newTag] };
+    });
+    setCustomSlotName("");
+  }
 
   // 選択中の日程（Day 1 / Day 2...）
   const selectedDay: DayRow = useMemo(
@@ -578,6 +641,115 @@ export default function SpotEditorModal({
               ))}
             </div>
           </div>
+
+          {/* 🎯 枠タグ（複数選択可：「1日目昼食」「2日目温泉」など、同じタグの候補から1つだけ選びたい・振り分けたいとき） */}
+          {spot.category !== "lodging" && (
+            <div className="rounded-2xl bg-purple-50/70 border border-purple-200 p-3 space-y-2.5">
+              <div>
+                <div className="text-xs font-extrabold text-purple-950">
+                  🎯 枠タグ（複数選択可・「どっちか1つ」選抜 ＆ 時間帯振り分け用）
+                </div>
+                <p className="text-[11px] text-purple-800 leading-relaxed mt-0.5">
+                  例：迷っている2軒に「1日目昼食」を付けると自動編成で<strong>最適な1軒だけ</strong>が選ばれ、もう1軒は候補プールに残ります。「1日目昼食」と「1日目夕食」の両方を付けておけば<strong>ルートに合わせて昼と夜に自動振り分け</strong>されます。
+                </p>
+              </div>
+
+              {/* プリセット＆既存枠タグのピル一覧 */}
+              <div className="flex flex-wrap gap-1.5">
+                {availableSlotPresets.map((preset) => {
+                  const selected = (bhRule.slotTags ?? []).some((x) => x.id === preset.id);
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => toggleSlotTag(preset)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold border transition ${
+                        selected
+                          ? "bg-purple-600 text-white border-purple-600 shadow-2xs"
+                          : "bg-white text-purple-900 border-purple-200 hover:bg-purple-100/60"
+                      }`}
+                    >
+                      <span>{preset.label}</span>
+                      <span
+                        className={`ml-1 text-[10px] font-mono ${
+                          selected ? "text-purple-100" : "text-purple-400"
+                        }`}
+                      >
+                        ({preset.windowStart}-{preset.windowEnd})
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 選択中の枠タグの時間帯（目安開始〜終了）調整 */}
+              {(bhRule.slotTags ?? []).length > 0 && (
+                <div className="space-y-1.5 pt-1 border-t border-purple-200/80">
+                  <div className="text-[10px] font-bold text-purple-900">
+                    選択中の枠タグの目安時間帯（変更すると自動編成時にこの時間帯へ配置されます）
+                  </div>
+                  {(bhRule.slotTags ?? []).map((st) => (
+                    <div
+                      key={st.id}
+                      className="flex items-center justify-between gap-2 bg-white rounded-xl border border-purple-200 px-2.5 py-1.5 text-xs"
+                    >
+                      <span className="font-bold text-purple-950 truncate">{st.label}</span>
+                      <div className="flex items-center gap-1 shrink-0 font-mono">
+                        <input
+                          type="time"
+                          value={st.windowStart}
+                          onChange={(e) =>
+                            updateSlotWindow(st.id, "windowStart", e.target.value)
+                          }
+                          className="px-1.5 py-0.5 rounded border border-purple-200 text-xs"
+                        />
+                        <span>〜</span>
+                        <input
+                          type="time"
+                          value={st.windowEnd}
+                          onChange={(e) =>
+                            updateSlotWindow(st.id, "windowEnd", e.target.value)
+                          }
+                          className="px-1.5 py-0.5 rounded border border-purple-200 text-xs"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 自由な枠タグを追加 */}
+              <div className="flex items-center gap-1.5 pt-1">
+                <input
+                  type="text"
+                  value={customSlotName}
+                  onChange={(e) => setCustomSlotName(e.target.value)}
+                  placeholder="自由な枠名 (例: 1日目おやつ)"
+                  className="flex-1 px-2.5 py-1 rounded-lg border border-purple-200 bg-white text-xs"
+                />
+                <input
+                  type="time"
+                  value={customSlotStart}
+                  onChange={(e) => setCustomSlotStart(e.target.value)}
+                  className="w-20 px-1.5 py-1 rounded-lg border border-purple-200 bg-white text-xs font-mono"
+                />
+                <span className="text-xs text-purple-700">〜</span>
+                <input
+                  type="time"
+                  value={customSlotEnd}
+                  onChange={(e) => setCustomSlotEnd(e.target.value)}
+                  className="w-20 px-1.5 py-1 rounded-lg border border-purple-200 bg-white text-xs font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCustomSlotTag}
+                  className="px-2.5 py-1 rounded-lg bg-purple-700 text-white text-xs font-bold hover:bg-purple-800 shrink-0"
+                >
+                  ＋枠作成
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* 住所 */}
           <div className="space-y-1.5">

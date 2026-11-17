@@ -5,6 +5,19 @@
  * あるいは人間にも読める標準書式 `[営業: 09:00-17:00 | 定休: 水]` / OSM opening_hours 文字列を解析する）
  */
 
+export interface ChoiceSlotTag {
+  /** スロット識別子（例: "day1-lunch" / "day2-onsen" / "custom-xxx"） */
+  id: string;
+  /** 表示名（例: "Day1 昼食" / "Day2 温泉"） */
+  label: string;
+  /** 対象Day（1..N、または null ならどの日でも可） */
+  dayIndex: number | null;
+  /** この枠に入るべき目安開始時刻 HH:MM（例: "11:30"） */
+  windowStart: string;
+  /** この枠に入るべき目安終了時刻 HH:MM（例: "13:30"） */
+  windowEnd: string;
+}
+
 export interface BusinessHoursRule {
   /** 営業開始 HH:MM（24時間制） */
   open: string | null;
@@ -18,6 +31,11 @@ export interface BusinessHoursRule {
   policyCheckIn?: string | null;
   /** 宿泊用: 施設の最終チェックアウト期限 HH:MM（例: "11:00"） */
   policyCheckOut?: string | null;
+  /**
+   * 「どっちか1つ」＆「時間帯・日程振り分け」用の枠タグ（複数選択可）
+   * 同じ id を持つ枠タグには、自動編成時に最大1スポットだけが選ばれる
+   */
+  slotTags?: ChoiceSlotTag[];
 }
 
 const DAY_NAMES_JA = ["日", "月", "火", "水", "木", "金", "土"] as const;
@@ -170,15 +188,42 @@ export function parseJapaneseBusinessHoursFromText(text: string): BusinessHoursR
   };
 }
 
+/** 日程リスト（Day 1..N）から標準の枠タグ候補一覧（朝食・昼食・カフェ・温泉・夕食）を生成する */
+export function buildDefaultSlotPresets(dayIndices: number[]): ChoiceSlotTag[] {
+  const kinds: { key: string; name: string; start: string; end: string }[] = [
+    { key: "breakfast", name: "朝食", start: "07:30", end: "09:30" },
+    { key: "lunch", name: "昼食", start: "11:30", end: "13:30" },
+    { key: "cafe", name: "カフェ", start: "14:00", end: "16:30" },
+    { key: "onsen", name: "温泉", start: "14:30", end: "18:30" },
+    { key: "dinner", name: "夕食", start: "17:30", end: "20:00" },
+  ];
+  const list: ChoiceSlotTag[] = [];
+  for (const d of dayIndices) {
+    if (d < 1) continue;
+    for (const k of kinds) {
+      list.push({
+        id: `day${d}-${k.key}`,
+        label: `${d}日目${k.name}`,
+        dayIndex: d,
+        windowStart: k.start,
+        windowEnd: k.end,
+      });
+    }
+  }
+  return list;
+}
+
 /** BusinessHoursRule を SpotRow.transport_note に保存・復元するシリアライズ関数 */
 export function serializeBusinessHours(rule: BusinessHoursRule): string {
+  const slots = rule.slotTags ?? [];
   if (
     !rule.open &&
     !rule.close &&
     rule.closedDays.length === 0 &&
     !rule.rawText &&
     !rule.policyCheckIn &&
-    !rule.policyCheckOut
+    !rule.policyCheckOut &&
+    slots.length === 0
   ) {
     return "";
   }
@@ -190,11 +235,12 @@ export function serializeBusinessHours(rule: BusinessHoursRule): string {
     rawText: rule.rawText,
     policyCheckIn: rule.policyCheckIn ?? null,
     policyCheckOut: rule.policyCheckOut ?? null,
+    slotTags: slots,
   });
 }
 
 export function deserializeBusinessHours(stored: string | null | undefined): BusinessHoursRule {
-  if (!stored) return { open: null, close: null, closedDays: [], rawText: "" };
+  if (!stored) return { open: null, close: null, closedDays: [], rawText: "", slotTags: [] };
   try {
     const obj = JSON.parse(stored) as {
       bh?: number;
@@ -204,6 +250,7 @@ export function deserializeBusinessHours(stored: string | null | undefined): Bus
       rawText?: string;
       policyCheckIn?: string | null;
       policyCheckOut?: string | null;
+      slotTags?: ChoiceSlotTag[];
     };
     if (obj && obj.bh === 1) {
       return {
@@ -213,12 +260,13 @@ export function deserializeBusinessHours(stored: string | null | undefined): Bus
         rawText: obj.rawText ?? "",
         policyCheckIn: obj.policyCheckIn ?? null,
         policyCheckOut: obj.policyCheckOut ?? null,
+        slotTags: Array.isArray(obj.slotTags) ? obj.slotTags : [],
       };
     }
   } catch {
     // not JSON
   }
-  return { open: null, close: null, closedDays: [], rawText: "" };
+  return { open: null, close: null, closedDays: [], rawText: "", slotTags: [] };
 }
 
 function hhmmToMin(hhmm: string): number {
