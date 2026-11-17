@@ -65,8 +65,17 @@ function computeLeaveByDeadline(
       leave_by_reason: `${toTokyoHHMM(spot.check_in)}チェックイン`,
     };
   }
-  // 3. 営業終了（閉店）時刻がある場合: 閉店時刻 − 滞在時間 − 移動時間
+  // 3. 予約ではない「行きたい目安時刻（targetTime）」がある場合: その時刻 − 移動時間
   const bh = deserializeBusinessHours(spot.transport_note);
+  if (bh.targetTime) {
+    const targetIso = combineDateTime(dayDate, bh.targetTime);
+    const leaveMs = Date.parse(targetIso) - travelMs;
+    return {
+      must_leave_prev_by: toTokyoHHMM(toTokyoISO(new Date(leaveMs))),
+      leave_by_reason: `目安 ${bh.targetTime}`,
+    };
+  }
+  // 4. 営業終了（閉店）時刻がある場合: 閉店時刻 − 滞在時間 − 移動時間
   if (bh.close) {
     const closeIso = combineDateTime(dayDate, bh.close);
     const latestArrivalMs = Date.parse(closeIso) - spot.stay_minutes * MIN;

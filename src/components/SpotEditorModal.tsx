@@ -170,8 +170,15 @@ export default function SpotEditorModal({
   const baseDefaultDate = dayDate ?? todayStr;
 
   // 行きたい時刻 / 予約時刻（HH:MM または null=未定）
+  // - 予約あり（spot.is_fixed）なら reservation_time を使用
+  // - 予約なしの目安時刻なら bhRule.targetTime を使用（「予約まで待機●分」は出さない）
+  const [hasTargetTime, setHasTargetTime] = useState<boolean>(
+    Boolean(initial.is_fixed || bhRule.targetTime),
+  );
   const [resTimeHHMM, setResTimeHHMM] = useState<string | null>(
-    initial.reservation_time ? toTokyoHHMM(initial.reservation_time) : "12:00",
+    initial.reservation_time
+      ? toTokyoHHMM(initial.reservation_time)
+      : bhRule.targetTime ?? null,
   );
   const [checkInDate, setCheckInDate] = useState<string>(
     initial.check_in ? toTokyoDate(new Date(initial.check_in)) : baseDefaultDate,
@@ -226,7 +233,7 @@ export default function SpotEditorModal({
         const earliestMs = prevEndMs + travelMs;
         earliestHHMM = toTokyoHHMM(toTokyoISO(new Date(earliestMs)));
 
-        if (spot.is_fixed && resTimeHHMM) {
+        if (hasTargetTime && resTimeHHMM) {
           const targetIso = combineDateTime(selectedDay.date, resTimeHHMM);
           const targetMs = Date.parse(targetIso);
           if (earliestMs > targetMs) {
@@ -240,12 +247,12 @@ export default function SpotEditorModal({
   }, [
     allSpots,
     checkoutByDay,
+    hasTargetTime,
     initial.day_index,
     isNew,
     resTimeHHMM,
     selectedDay,
     spot.id,
-    spot.is_fixed,
     spot.transport_duration_minutes,
   ]);
 
@@ -254,7 +261,7 @@ export default function SpotEditorModal({
     if (spot.category === "lodging") {
       return hasCheckInOut ? checkLodgingPolicyAlert(bhRule, checkInHHMM, checkOutHHMM) : null;
     }
-    const checkArr = spot.is_fixed ? resTimeHHMM : earliestArrivalHHMM;
+    const checkArr = hasTargetTime && resTimeHHMM ? resTimeHHMM : earliestArrivalHHMM;
     const checkDep = checkArr ? addMinutesHHMM(checkArr, spot.stay_minutes) : null;
     return checkBusinessHoursAlert(bhRule, dayDate, checkArr, checkDep);
   }, [
@@ -264,9 +271,9 @@ export default function SpotEditorModal({
     dayDate,
     earliestArrivalHHMM,
     hasCheckInOut,
+    hasTargetTime,
     resTimeHHMM,
     spot.category,
-    spot.is_fixed,
     spot.stay_minutes,
   ]);
 
@@ -279,10 +286,10 @@ export default function SpotEditorModal({
         reason: `${checkInHHMM}チェックイン`,
       };
     }
-    if (spot.is_fixed && resTimeHHMM) {
+    if (hasTargetTime && resTimeHHMM) {
       return {
         hhmm: addMinutesHHMM(resTimeHHMM, 24 * 60 - travel),
-        reason: `${resTimeHHMM}到着希望`,
+        reason: spot.is_fixed ? `${resTimeHHMM}予約` : `目安 ${resTimeHHMM}`,
       };
     }
     if (bhRule.close) {
@@ -441,7 +448,11 @@ export default function SpotEditorModal({
     try {
       const baseDate = dayDate ?? todayStr;
       const reservation_time =
-        spot.is_fixed && resTimeHHMM ? combineDateTime(baseDate, resTimeHHMM) : null;
+        spot.is_fixed && hasTargetTime && resTimeHHMM
+          ? combineDateTime(baseDate, resTimeHHMM)
+          : null;
+      const targetTimeForNote =
+        !spot.is_fixed && hasTargetTime && resTimeHHMM ? resTimeHHMM : null;
       const check_in =
         spot.category === "lodging" && hasCheckInOut && checkInDate && checkInHHMM
           ? combineDateTime(checkInDate, checkInHHMM)
@@ -453,9 +464,10 @@ export default function SpotEditorModal({
 
       await onSave({
         ...spot,
+        is_fixed: Boolean(spot.is_fixed && hasTargetTime && resTimeHHMM),
         name: spot.name.trim(),
         place_url: gmapUrl.trim() ? gmapUrl.trim() : spot.place_url,
-        transport_note: serializeBusinessHours(bhRule),
+        transport_note: serializeBusinessHours({ ...bhRule, targetTime: targetTimeForNote }),
         reservation_time,
         check_in,
         check_out,
@@ -913,38 +925,59 @@ export default function SpotEditorModal({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-indigo-950">
                       行きたい時刻 / 予約時刻
                     </label>
                     <label className="inline-flex items-center gap-1 text-xs font-bold text-indigo-800 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={spot.is_fixed}
-                        onChange={(e) => setSpot((s) => ({ ...s, is_fixed: e.target.checked }))}
+                        checked={hasTargetTime}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setHasTargetTime(checked);
+                          if (!checked) {
+                            setSpot((s) => ({ ...s, is_fixed: false }));
+                            setResTimeHHMM(null);
+                          } else if (!resTimeHHMM) {
+                            setResTimeHHMM("12:00");
+                          }
+                        }}
                       />
                       時間を指定する
                     </label>
                   </div>
                   <TimeSelect
-                    disabled={!spot.is_fixed}
-                    value={spot.is_fixed ? resTimeHHMM : null}
+                    disabled={!hasTargetTime}
+                    value={hasTargetTime ? resTimeHHMM : null}
                     defaultHour="12"
                     onChange={(val) => {
                       if (val === null) {
+                        setHasTargetTime(false);
                         setSpot((s) => ({ ...s, is_fixed: false }));
                         setResTimeHHMM(null);
                       } else {
+                        setHasTargetTime(true);
                         setResTimeHHMM(val);
                       }
                     }}
                     className="w-full justify-between border-indigo-200"
                   />
+                  {hasTargetTime && (
+                    <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-900 cursor-pointer pt-0.5">
+                      <input
+                        type="checkbox"
+                        checked={spot.is_fixed}
+                        onChange={(e) => setSpot((s) => ({ ...s, is_fixed: e.target.checked }))}
+                      />
+                      <span>予約あり（時間固定・待機や遅刻アラートの対象にする）</span>
+                    </label>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-indigo-950 mb-1">
+                  <label className="block text-xs font-semibold text-indigo-950 mb-1.5">
                     滞在時間（分）
                   </label>
                   <input
@@ -972,12 +1005,20 @@ export default function SpotEditorModal({
               )}
 
               {/* 旅程的に無理がある場合のリアルタイム警告 */}
-              {overrunMinutes > 0 && (
+              {overrunMinutes > 0 && spot.is_fixed && (
                 <div className="flex items-start gap-1.5 rounded-xl bg-red-600 text-white px-3 py-2 text-xs font-bold shadow-xs">
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>
-                    ⚠️ 前の予定からの移動が間に合いません：{overrunMinutes}分超過（指定 {resTimeHHMM}{" "}
+                    ⚠️ 前の予定からの移動が予約に間に合いません：{overrunMinutes}分超過（予約 {resTimeHHMM}{" "}
                     / 最短到着見込み {earliestArrivalHHMM}）
+                  </span>
+                </div>
+              )}
+              {overrunMinutes > 0 && !spot.is_fixed && (
+                <div className="flex items-start gap-1.5 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 px-3 py-2 text-xs font-bold">
+                  <Clock className="w-4 h-4 shrink-0 mt-0.5 text-amber-700" />
+                  <span>
+                    目安時刻（{resTimeHHMM}）より {overrunMinutes}分遅れて到着する見込みです（最短到着 {earliestArrivalHHMM}）
                   </span>
                 </div>
               )}
