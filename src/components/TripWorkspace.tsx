@@ -23,7 +23,6 @@ import {
   Share2,
   AlertTriangle,
   Navigation,
-  Clock,
   Calculator,
   Calendar,
   Sparkles,
@@ -38,6 +37,7 @@ import {
   Home,
   Pin,
   ArrowLeft,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   addDays,
@@ -190,6 +190,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showDepartureModal, setShowDepartureModal] = useState(false);
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [autoPlanBusy, setAutoPlanBusy] = useState(false);
   const [autoPlanMsg, setAutoPlanMsg] = useState<string | null>(null);
@@ -975,90 +976,58 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           </div>
         </div>
       ) : mainTab === "itinerary" ? (
-        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 max-w-3xl w-full mx-auto">
-          <div className="rounded-2xl bg-white border border-slate-200/90 p-3 space-y-2 shadow-2xs">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-800 flex-wrap">
-                <Navigation className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{activeDay.label} の出発設定</span>
+        <div className="flex-1 overflow-y-auto px-3 py-2.5 space-y-3 max-w-3xl w-full mx-auto">
+          {/* 出発設定は普段は1行のコンパクトサマリーバーにして、タイムスケジュールを広く表示する */}
+          <div className="flex items-center justify-between gap-2 rounded-2xl bg-white border border-slate-200/90 px-3 py-2 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setShowDepartureModal(true)}
+              className="flex-1 min-w-0 flex items-center gap-2 text-left"
+            >
+              <span className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                <Navigation className="w-3.5 h-3.5" />
+              </span>
+              <div className="min-w-0 flex items-center gap-1.5 flex-wrap text-xs">
+                <span className="font-mono font-extrabold text-slate-900">
+                  {activeDay.departure_time ??
+                    (daySchedule?.checkoutSpot?.check_out
+                      ? toTokyoHHMM(daySchedule.checkoutSpot.check_out)
+                      : "--:--")}
+                </span>
+                <span className="text-slate-400">出発</span>
+                <span className="font-bold text-slate-700 truncate max-w-[160px]">
+                  {activeDay.departure_point ||
+                    daySchedule?.checkoutSpot?.name ||
+                    "出発地点未設定"}
+                </span>
                 {daySchedule?.checkoutSpot && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
-                    🏨 宿泊地「{daySchedule.checkoutSpot.name}」の座標・チェックアウト時刻と自動連動中
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
+                    🏨 宿泊連動
                   </span>
                 )}
               </div>
+            </button>
+
+            <div className="flex items-center gap-1.5 shrink-0">
               {daySpots.length > 0 && (
                 <button
                   type="button"
                   disabled={recalcBusy}
                   onClick={() => recalculateDayRoutes(activeDay, daySpots)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 disabled:opacity-50"
+                  className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 disabled:opacity-50"
+                  title="移動時間を再計算"
                 >
-                  <Calculator className="w-3 h-3" />
-                  {recalcBusy ? "ルート計算中..." : "移動時間を再計算"}
+                  <Calculator className="w-3.5 h-3.5" />
                 </button>
               )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-              <div className="sm:col-span-3 flex items-center gap-1.5">
-                <span className="text-[11px] text-slate-500 shrink-0">日付</span>
-                <input
-                  type="date"
-                  value={activeDay.date ?? ""}
-                  onChange={(e) => handleSaveDayPatch({ date: e.target.value || null })}
-                  className="w-full px-2 py-1.5 rounded-xl border border-slate-300 text-xs"
-                />
-              </div>
-
-              <div className="sm:col-span-4 flex items-center gap-1.5">
-                <span className="text-[11px] text-slate-500 shrink-0">出発</span>
-                <TimeSelect
-                  value={
-                    activeDay.departure_time ??
-                    (daySchedule?.checkoutSpot?.check_out
-                      ? toTokyoHHMM(daySchedule.checkoutSpot.check_out)
-                      : null)
-                  }
-                  defaultHour="08"
-                  onChange={(val) => handleSaveDayPatch({ departure_time: val })}
-                  className="flex-1 justify-between"
-                />
-              </div>
-
-              <div className="sm:col-span-5 flex items-center gap-1.5">
-                <input
-                  type="text"
-                  value={
-                    activeDay.departure_point ??
-                    daySchedule?.checkoutSpot?.name ??
-                    ""
-                  }
-                  onChange={(e) =>
-                    setDoc((prev) => ({
-                      ...prev,
-                      days: prev.days.map((d) =>
-                        d.day_index === activeDay.day_index
-                          ? { ...d, departure_point: e.target.value || null }
-                          : d,
-                      ),
-                    }))
-                  }
-                  onBlur={(e) =>
-                    handleSaveDayPatch({ departure_point: e.target.value || null })
-                  }
-                  placeholder="出発地点（例: 自宅 / 新宿駅）"
-                  className="flex-1 px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs"
-                />
-                <button
-                  type="button"
-                  disabled={depGeoBusy}
-                  onClick={handleGeocodeDeparture}
-                  className="px-2.5 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 shrink-0"
-                >
-                  {depGeoBusy ? "..." : "座標取得"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowDepartureModal(true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700"
+              >
+                <SlidersHorizontal className="w-3 h-3" />
+                <span>出発設定</span>
+              </button>
             </div>
           </div>
 
@@ -1313,6 +1282,133 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       {/* しおり共有モーダル */}
       {showShareModal && (
         <ShareTripModal doc={doc} onClose={() => setShowShareModal(false)} />
+      )}
+
+      {/* 出発設定モーダル（タイムスケジュール画面を広く保つため、タップ時のみ開く） */}
+      {showDepartureModal && (
+        <div
+          className="fixed inset-0 z-[2300] bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setShowDepartureModal(false)}
+        >
+          <div
+            className="bg-white text-slate-900 w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
+                  <Navigation className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-extrabold">{activeDay.label} の出発設定</h2>
+                  {daySchedule?.checkoutSpot ? (
+                    <p className="text-[11px] text-purple-700 font-semibold">
+                      🏨 宿泊地「{daySchedule.checkoutSpot.name}」と自動連動中
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-500">
+                      変更すると全行程の時刻が自動で再計算されます
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDepartureModal(false)}
+                className="p-1.5 rounded-xl text-slate-500 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">日付</label>
+                <input
+                  type="date"
+                  value={activeDay.date ?? ""}
+                  onChange={(e) => handleSaveDayPatch({ date: e.target.value || null })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">出発時刻</label>
+                <TimeSelect
+                  value={
+                    activeDay.departure_time ??
+                    (daySchedule?.checkoutSpot?.check_out
+                      ? toTokyoHHMM(daySchedule.checkoutSpot.check_out)
+                      : null)
+                  }
+                  defaultHour="08"
+                  onChange={(val) => handleSaveDayPatch({ departure_time: val })}
+                  className="w-full justify-between"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  出発地点（場所名・座標取得）
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={
+                      activeDay.departure_point ?? daySchedule?.checkoutSpot?.name ?? ""
+                    }
+                    onChange={(e) =>
+                      setDoc((prev) => ({
+                        ...prev,
+                        days: prev.days.map((d) =>
+                          d.day_index === activeDay.day_index
+                            ? { ...d, departure_point: e.target.value || null }
+                            : d,
+                        ),
+                      }))
+                    }
+                    onBlur={(e) =>
+                      handleSaveDayPatch({ departure_point: e.target.value || null })
+                    }
+                    placeholder="例: 自宅 / 新宿駅"
+                    className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs"
+                  />
+                  <button
+                    type="button"
+                    disabled={depGeoBusy}
+                    onClick={handleGeocodeDeparture}
+                    className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 shrink-0"
+                  >
+                    {depGeoBusy ? "..." : "座標取得"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200">
+              {daySpots.length > 0 ? (
+                <button
+                  type="button"
+                  disabled={recalcBusy}
+                  onClick={() => recalculateDayRoutes(activeDay, daySpots)}
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 disabled:opacity-50"
+                >
+                  <Calculator className="w-3.5 h-3.5" />
+                  <span>{recalcBusy ? "計算中..." : "移動時間を一括再計算"}</span>
+                </button>
+              ) : (
+                <div />
+              )}
+              <button
+                type="button"
+                onClick={() => setShowDepartureModal(false)}
+                className="px-5 py-2 rounded-xl bg-slate-900 text-white text-xs font-extrabold hover:bg-slate-800"
+              >
+                完了
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 右側スライドメニュー（サイドバー：共有・Muse出力・ホーム移動をここに収納） */}
