@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Search, MapPin, Plus } from "lucide-react";
 import type { DayRow, SpotRow } from "@/lib/model/types";
-import { searchPlaces, reverseGeocode, type GeocodeResult } from "@/lib/geo/geocode";
+import { searchPlaces, type GeocodeResult } from "@/lib/geo/geocode";
 
 const CATEGORY_COLOR: Record<SpotRow["category"], string> = {
   sightseeing: "#2563eb",
@@ -59,15 +59,6 @@ const pendingIcon = L.divIcon({
   iconAnchor: [15, 15],
 });
 
-function MapTapHandler({ onTap }: { onTap: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click(e) {
-      onTap(e.latlng.lat, e.latlng.lng);
-    },
-  });
-  return null;
-}
-
 function MapFlyTo({ target }: { target: { lat: number; lng: number } | null }) {
   const map = useMap();
   useEffect(() => {
@@ -75,6 +66,21 @@ function MapFlyTo({ target }: { target: { lat: number; lng: number } | null }) {
       map.flyTo([target.lat, target.lng], Math.max(map.getZoom(), 14), { duration: 0.6 });
     }
   }, [map, target]);
+  return null;
+}
+
+/** 登録されているすべてのピンが画面にちょうどよく収まるよう自動調整する */
+function MapFitBounds({ pointsKey, points }: { pointsKey: string; points: [number, number][] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (points.length === 0) return;
+    if (points.length === 1) {
+      map.setView(points[0], 13);
+      return;
+    }
+    map.fitBounds(points, { padding: [48, 48], maxZoom: 15 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, pointsKey]);
   return null;
 }
 
@@ -117,12 +123,13 @@ export default function TripMap({
       ? [pinnedSpots[0].lat!, pinnedSpots[0].lng!]
       : depLat !== null && depLng !== null
         ? [depLat, depLng]
-        : [35.6812, 139.7671]; // 東京駅周辺を既定表示
+        : [35.6812, 139.7671];
 
   const polylinePoints: [number, number][] = [
     ...(depLat !== null && depLng !== null ? ([[depLat, depLng]] as [number, number][]) : []),
     ...pinnedSpots.map((s) => [s.lat!, s.lng!] as [number, number]),
   ];
+  const pointsKey = `${day.day_index}:${polylinePoints.map((p) => p.join(",")).join("|")}`;
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -149,34 +156,10 @@ export default function TripMap({
     }
   }
 
-  async function handleMapTap(lat: number, lng: number) {
-    const roundedLat = Number(lat.toFixed(6));
-    const roundedLng = Number(lng.toFixed(6));
-    setPending({
-      lat: roundedLat,
-      lng: roundedLng,
-      name: "選択した地点",
-      address: `${roundedLat}, ${roundedLng}`,
-    });
-    const rev = await reverseGeocode(roundedLat, roundedLng).catch(() => null);
-    if (rev) {
-      setPending({
-        lat: roundedLat,
-        lng: roundedLng,
-        name: rev.name || "選択した地点",
-        address: rev.address,
-        opening_hours: rev.opening_hours ?? null,
-      });
-    }
-  }
-
   return (
     <div className="relative h-full w-full select-none isolate overflow-hidden">
-      {/* 地図上の検索バー */}
-      <div className="
-        absolute top-2.5 left-2.5 right-2.5 z-[1000]
-        flex flex-col gap-1.5 pointer-events-auto
-      ">
+      {/* 地図上の場所名検索バー（誤タップ防止のため地図タップ追加は廃止し、位置確認＆検索のみに集中） */}
+      <div className="absolute top-2.5 left-2.5 right-2.5 z-[1000] flex flex-col gap-1.5 pointer-events-auto">
         <form onSubmit={handleSearch} className="flex gap-1.5">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -184,28 +167,21 @@ export default function TripMap({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="場所を検索、または地図をタップしてピン留め..."
-              className="
-                w-full pl-9 pr-3 py-2 text-sm rounded-xl
-                bg-white/95 text-neutral-900 shadow-md border border-neutral-200
-                focus:outline-none focus:ring-2 focus:ring-blue-500
-              "
+              placeholder="場所名を検索して位置関係を確認..."
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-xl bg-white/95 text-neutral-900 shadow-md border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <button
             type="submit"
             disabled={searching}
-            className="
-              px-3.5 py-2 rounded-xl text-xs font-semibold
-              bg-blue-600 text-white shadow-md hover:bg-blue-700 disabled:opacity-50
-            "
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white shadow-md hover:bg-blue-700 disabled:opacity-50"
           >
             {searching ? "..." : "検索"}
           </button>
         </form>
 
         {results.length > 0 && (
-          <div className="bg-white/95 rounded-xl shadow-lg border border-neutral-200 max-h-40 overflow-y-auto divide-y divide-neutral-100">
+          <div className="bg-white/95 rounded-xl shadow-lg border border-neutral-200 max-h-44 overflow-y-auto divide-y divide-neutral-100">
             {results.map((r, idx) => (
               <button
                 key={idx}
@@ -235,13 +211,9 @@ export default function TripMap({
         )}
       </div>
 
-      {/* 仮ピン選択時の下部フローティングバー */}
+      {/* 検索結果プレビュー時の下部フローティングバー */}
       {pending && (
-        <div className="
-          absolute bottom-2.5 left-2.5 right-2.5 z-[1000]
-          bg-white/95 backdrop-blur rounded-xl shadow-lg border border-neutral-200
-          p-2.5 flex items-center justify-between gap-2
-        ">
+        <div className="absolute bottom-2.5 left-2.5 right-2.5 z-[1000] bg-white/95 backdrop-blur rounded-xl shadow-lg border border-neutral-200 p-2.5 flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="text-xs font-bold text-neutral-900 truncate">{pending.name}</div>
             <div className="text-[11px] text-neutral-500 truncate">{pending.address}</div>
@@ -260,10 +232,7 @@ export default function TripMap({
                 onPickPlace(pending);
                 setPending(null);
               }}
-              className="
-                inline-flex items-center gap-1 px-3 py-1.5 rounded-lg
-                bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700
-              "
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
             >
               <Plus className="w-3.5 h-3.5" />
               しおりに追加
@@ -282,7 +251,7 @@ export default function TripMap({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <MapTapHandler onTap={handleMapTap} />
+        <MapFitBounds pointsKey={pointsKey} points={polylinePoints} />
         <MapFlyTo target={flyTarget} />
 
         {depLat !== null && depLng !== null && (
@@ -309,12 +278,13 @@ export default function TripMap({
           ) : null,
         )}
 
-        {pending && (
-          <Marker position={[pending.lat, pending.lng]} icon={pendingIcon} />
-        )}
+        {pending && <Marker position={[pending.lat, pending.lng]} icon={pendingIcon} />}
 
         {polylinePoints.length >= 2 && (
-          <Polyline positions={polylinePoints} pathOptions={{ color: "#2563eb", weight: 3, dashArray: "6 6" }} />
+          <Polyline
+            positions={polylinePoints}
+            pathOptions={{ color: "#2563eb", weight: 3, dashArray: "6 6" }}
+          />
         )}
       </MapContainer>
     </div>
