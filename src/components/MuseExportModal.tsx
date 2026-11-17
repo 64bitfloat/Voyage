@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   X,
   Copy,
@@ -18,7 +18,6 @@ import {
 import type { TripDoc } from "@/lib/model/types";
 import { buildExportFromDoc } from "@/lib/model/to-export";
 import { countBySeverity, renderExportMarkdown, validateExport } from "@/lib/export";
-import { encodeDocSnapshot } from "@/lib/share/snapshot";
 
 interface MuseExportModalProps {
   doc: TripDoc;
@@ -37,10 +36,17 @@ export default function MuseExportModal({ doc, onClose }: MuseExportModalProps) 
   const jsonText = useMemo(() => JSON.stringify(exported, null, 2), [exported]);
   const mdText = useMemo(() => renderExportMarkdown(exported), [exported]);
 
+  useEffect(() => {
+    void fetch(`/api/trips/${doc.trip.id}/sync`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(doc),
+    }).catch(() => {});
+  }, [doc]);
+
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const snap = useMemo(() => encodeDocSnapshot(doc), [doc]);
-  const summaryUrl = `${origin}/trip/${doc.trip.id}/summary?s=${snap}`;
-  const summaryJsonUrl = `${origin}/trip/${doc.trip.id}/summary?format=json&s=${snap}`;
+  const summaryUrl = `${origin}/trip/${doc.trip.id}/summary`;
+  const summaryJsonUrl = `${origin}/trip/${doc.trip.id}/summary?format=json`;
 
   async function handleCopyJson() {
     await navigator.clipboard.writeText(jsonText);

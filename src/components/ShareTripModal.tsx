@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, Copy, Check, Share2, Link2 } from "lucide-react";
 import type { TripDoc } from "@/lib/model/types";
 import { encodeDocSnapshot } from "@/lib/share/snapshot";
@@ -29,13 +29,24 @@ function copyTextFallback(text: string): boolean {
 
 export default function ShareTripModal({ doc, onClose }: ShareTripModalProps) {
   const [copied, setCopied] = useState(false);
+  const [includeBackupHash, setIncludeBackupHash] = useState(false);
+
+  // モーダルを開いた時点でサーバー側ストアへ最新データを同期しておく
+  useEffect(() => {
+    void fetch(`/api/trips/${doc.trip.id}/sync`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(doc),
+    }).catch(() => {});
+  }, [doc]);
 
   const shareUrl = useMemo(() => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const cleanUrl = `${origin}/trip/${doc.trip.id}`;
+    if (!includeBackupHash) return cleanUrl;
     const snap = encodeDocSnapshot(doc);
-    // ハッシュ (#s=...) を使うことでサーバーへ長大なURLを送らず確実にクライアント側で復元させる
-    return `${origin}/trip/${doc.trip.id}#s=${snap}`;
-  }, [doc]);
+    return `${cleanUrl}#s=${snap}`;
+  }, [doc, includeBackupHash]);
 
   async function handleCopy() {
     try {
@@ -78,7 +89,7 @@ export default function ShareTripModal({ doc, onClose }: ShareTripModalProps) {
             <div>
               <h2 className="text-sm font-extrabold">しおりを友人に共有</h2>
               <p className="text-[11px] text-slate-500">
-                現在の予定・スポット・費用をすべて含んだ共有リンクです
+                このURLを友人に送るとしおりを開けます
               </p>
             </div>
           </div>
@@ -94,7 +105,7 @@ export default function ShareTripModal({ doc, onClose }: ShareTripModalProps) {
         <div className="space-y-2">
           <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
             <Link2 className="w-3.5 h-3.5 text-blue-600" />
-            <span>共有用URL（タップして全選択できます）</span>
+            <span>共有用URL（短い標準リンク）</span>
           </label>
           <input
             type="text"
@@ -104,6 +115,14 @@ export default function ShareTripModal({ doc, onClose }: ShareTripModalProps) {
             onClick={(e) => e.currentTarget.select()}
             className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-xs font-mono text-slate-800"
           />
+          <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer pt-0.5">
+            <input
+              type="checkbox"
+              checked={includeBackupHash}
+              onChange={(e) => setIncludeBackupHash(e.target.checked)}
+            />
+            <span>URL自体にも全データを埋め込む（外部ブラウザ・LINE送信用）</span>
+          </label>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
@@ -125,10 +144,6 @@ export default function ShareTripModal({ doc, onClose }: ShareTripModalProps) {
             <span>アプリで送る (LINE等)</span>
           </button>
         </div>
-
-        <p className="text-[11px] text-slate-500 leading-relaxed">
-          ※予定を変更したあとに再度友人に最新状態を渡したい場合は、もう一度このボタンを押して新しいURLを送ってください（Supabase接続時は同じURLのままリアルタイム同期されます）。
-        </p>
       </div>
     </div>
   );

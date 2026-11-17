@@ -144,7 +144,7 @@ function readStoredTrip(base: TripDoc): TripDoc {
 export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   const [doc, setDoc] = useState<TripDoc>(() => readStoredTrip(normalizeDays(initialDoc)));
 
-  // localStorage と「最近のしおり一覧」へ自動保存する
+  // localStorage と「最近のしおり一覧」、およびサーバー側ストアへ自動保存・同期する
   useEffect(() => {
     try {
       if (window.location.hash.includes("s=")) {
@@ -168,6 +168,14 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
     } catch {
       // ignore quota errors
     }
+    const timer = setTimeout(() => {
+      void fetch(`/api/trips/${doc.trip.id}/sync`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(doc),
+      }).catch(() => {});
+    }, 350);
+    return () => clearTimeout(timer);
   }, [doc]);
 
   const [mainTab, setMainTab] = useState<MainTab>("itinerary");
@@ -235,7 +243,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
   /** 旅行全体の開始日・終了日を変更した際、Day 1..N の日付を連動して再設定する */
   async function handleChangeTripDates(newStart: string | null, newEnd: string | null) {
-    const end = newStart && newEnd && newEnd < newStart ? newStart : newEnd;
+    const end = newStart && !newEnd ? newStart : newStart && newEnd && newEnd < newStart ? newStart : newEnd;
     const count =
       newStart && end ? Math.min(31, Math.max(1, daysBetween(newStart, end) + 1)) : doc.days.length;
 
@@ -669,6 +677,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             <span>〜</span>
             <input
               type="date"
+              min={doc.trip.start_date || undefined}
               value={doc.trip.end_date ?? ""}
               onChange={(e) => handleChangeTripDates(doc.trip.start_date, e.target.value || null)}
               className="bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-[11px] font-medium text-slate-700"

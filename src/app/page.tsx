@@ -15,9 +15,9 @@ interface RecentTripItem {
 
 export default function HomePage() {
   const router = useRouter();
-  const [title, setTitle] = useState("精進レークサイドキャンプ");
-  const [startDate, setStartDate] = useState("2026-12-12");
-  const [endDate, setEndDate] = useState("2026-12-13");
+  const [title, setTitle] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [passcode, setPasscode] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -161,7 +161,7 @@ export default function HomePage() {
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="例: 精進レークサイドキャンプ"
+              placeholder="例: 週末温泉旅行"
               className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -172,7 +172,13 @@ export default function HomePage() {
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setStartDate(val);
+                  if (val && (!endDate || endDate < val)) {
+                    setEndDate(val);
+                  }
+                }}
                 className="w-full px-3 py-2 rounded-2xl border border-slate-300 text-xs"
               />
             </div>
@@ -180,6 +186,7 @@ export default function HomePage() {
               <label className="block text-xs font-bold text-slate-700">終了日</label>
               <input
                 type="date"
+                min={startDate || undefined}
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="w-full px-3 py-2 rounded-2xl border border-slate-300 text-xs"

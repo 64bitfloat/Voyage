@@ -48,12 +48,12 @@ export async function GET(req: Request, { params }: Ctx) {
     await store.createTrip(
       {
         id: tripId,
-        title: "精進レークサイドキャンプ",
-        start_date: "2026-12-12",
-        end_date: "2026-12-13",
+        title: "新しい旅行しおり",
+        start_date: null,
+        end_date: null,
         notes: "",
       },
-      initialDays("2026-12-12", "2026-12-13"),
+      initialDays(null, null),
       null,
     );
     doc = await store.getTripDoc(tripId);

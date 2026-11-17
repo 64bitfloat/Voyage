@@ -49,12 +49,14 @@ export default function SpotEditorModal({
   onDelete,
   onClose,
 }: SpotEditorModalProps) {
+  const todayStr = toTokyoDate(new Date());
+  const baseDefaultDate = dayDate ?? todayStr;
   const [spot, setSpot] = useState<SpotRow>(initial);
   const [resTimeHHMM, setResTimeHHMM] = useState<string>(
     initial.reservation_time ? toTokyoHHMM(initial.reservation_time) : "12:00",
   );
   const [checkInDate, setCheckInDate] = useState<string>(
-    initial.check_in ? toTokyoDate(new Date(initial.check_in)) : dayDate ?? "2026-12-12",
+    initial.check_in ? toTokyoDate(new Date(initial.check_in)) : baseDefaultDate,
   );
   const [checkInHHMM, setCheckInHHMM] = useState<string>(
     initial.check_in ? toTokyoHHMM(initial.check_in) : "15:00",
@@ -62,9 +64,7 @@ export default function SpotEditorModal({
   const [checkOutDate, setCheckOutDate] = useState<string>(
     initial.check_out
       ? toTokyoDate(new Date(initial.check_out))
-      : dayDate
-        ? addDays(dayDate, 1)
-        : "2026-12-13",
+      : addDays(baseDefaultDate, 1),
   );
   const [checkOutHHMM, setCheckOutHHMM] = useState<string>(
     initial.check_out ? toTokyoHHMM(initial.check_out) : "10:00",
@@ -107,7 +107,7 @@ export default function SpotEditorModal({
     if (!spot.name.trim()) return;
     setSaving(true);
     try {
-      const baseDate = dayDate ?? "2026-12-12";
+      const baseDate = dayDate ?? todayStr;
       const reservation_time =
         spot.is_fixed && resTimeHHMM ? combineDateTime(baseDate, resTimeHHMM) : null;
       const check_in =
@@ -169,7 +169,7 @@ export default function SpotEditorModal({
               required
               value={spot.name}
               onChange={(e) => setSpot((s) => ({ ...s, name: e.target.value }))}
-              placeholder="例: 精進湖畔散策"
+              placeholder="例: 目的地・お店の名前"
               className="w-full px-3 py-2 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -240,7 +240,7 @@ export default function SpotEditorModal({
               type="text"
               value={spot.address ?? ""}
               onChange={(e) => setSpot((s) => ({ ...s, address: e.target.value || null }))}
-              placeholder="例: 山梨県南都留郡富士河口湖町精進..."
+              placeholder="例: 宿泊先や目的地の住所"
               className="w-full px-3 py-2 rounded-xl border border-neutral-300"
             />
           </div>
@@ -269,7 +269,13 @@ export default function SpotEditorModal({
                       <input
                         type="date"
                         value={checkInDate}
-                        onChange={(e) => setCheckInDate(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCheckInDate(val);
+                          if (val && (!checkOutDate || checkOutDate < val)) {
+                            setCheckOutDate(addDays(val, 1));
+                          }
+                        }}
                         className="flex-1 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs"
                       />
                       <input
@@ -287,6 +293,7 @@ export default function SpotEditorModal({
                     <div className="flex gap-1">
                       <input
                         type="date"
+                        min={checkInDate || undefined}
                         value={checkOutDate}
                         onChange={(e) => setCheckOutDate(e.target.value)}
                         className="flex-1 px-2 py-1.5 rounded-lg border border-purple-200 bg-white text-xs"

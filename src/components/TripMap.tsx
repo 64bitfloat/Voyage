@@ -104,7 +104,7 @@ export default function TripMap({ day, spots, onPickPlace, onSelectSpot }: TripM
       ? [pinnedSpots[0].lat!, pinnedSpots[0].lng!]
       : day.departure_lat !== null && day.departure_lng !== null
         ? [day.departure_lat, day.departure_lng]
-        : [35.49, 138.6]; // 精進湖周辺を既定表示
+        : [35.6812, 139.7671]; // 東京駅周辺を既定表示
 
   const polylinePoints: [number, number][] = [
     ...(day.departure_lat !== null && day.departure_lng !== null
