@@ -269,6 +269,8 @@ export default function TripMap({
         {spots.map((s, idx) => {
           if (s.lat === null || s.lng === null) return null;
           const timing = timings?.[s.id];
+          const nextSpot = spots[idx + 1];
+          const nextTiming = nextSpot ? timings?.[nextSpot.id] : undefined;
           return (
             <Marker
               key={s.id}
@@ -276,7 +278,7 @@ export default function TripMap({
               icon={makeNumberIcon(idx + 1, CATEGORY_COLOR[s.category], s.status)}
             >
               <Popup>
-                <div className="min-w-[180px] max-w-[240px] space-y-1.5 py-0.5">
+                <div className="min-w-[190px] max-w-[240px] space-y-1.5 py-0.5">
                   <div className="text-xs font-extrabold text-slate-900 leading-snug">
                     {idx + 1}. {s.name}
                   </div>
@@ -296,6 +298,14 @@ export default function TripMap({
                           ? `${toTokyoHHMM(timing.arrival)} 〜 ${toTokyoHHMM(timing.departure)}（${s.stay_minutes}分）`
                           : `滞在予定 ${s.stay_minutes}分`}
                       </span>
+                    </div>
+                  )}
+                  {nextTiming?.must_leave_prev_by && nextSpot && (
+                    <div className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-1 text-[11px] font-bold text-emerald-900">
+                      🕒 {nextTiming.must_leave_prev_by} までにここを出発
+                      <div className="text-[10px] font-normal text-emerald-700 truncate">
+                        （次: {nextSpot.name}）
+                      </div>
                     </div>
                   )}
                   {s.address && (
