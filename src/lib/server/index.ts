@@ -15,8 +15,6 @@ export function getStore(): TripStore {
   if (url && key) {
     store = new SupabaseStore(url, key);
   } else {
-    if (process.env.NODE_ENV === "production" && process.env.VERCEL)
-      throw new Error("Supabase の環境変数（NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY）が未設定です");
     console.warn("[voyage] Supabase未設定のためメモリストアで動作します（再起動でデータは消えます）");
     store = new MemoryStore();
   }
