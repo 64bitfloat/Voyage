@@ -63,6 +63,17 @@ export async function PUT(req: Request, { params }: Ctx) {
       }
     }
     for (const s of doc.spots) {
+      if (s.day_index === 0 && !doc.days.some((d) => d.day_index === 0)) {
+        await store.upsertDay(tripId, {
+          day_index: 0,
+          label: "候補プール",
+          date: null,
+          departure_point: null,
+          departure_lat: null,
+          departure_lng: null,
+          departure_time: null,
+        });
+      }
       await store.createSpot(tripId, s);
       await store.updateSpot(tripId, s.id, s);
     }

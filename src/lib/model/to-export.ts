@@ -7,11 +7,27 @@
  */
 import { CURRENCY, SCHEMA_VERSION, TIMEZONE, type VoyageExport } from "../export/schema";
 import { toTokyoISO } from "../datetime";
-import type { TripDoc } from "./types";
+import type { DayRow, TripDoc } from "./types";
 import { computeTripSchedule, spotsOfDay } from "../schedule/compute";
 
 export function buildExportFromDoc(doc: TripDoc, now: Date = new Date()): VoyageExport {
   const { byDay, conflicts } = computeTripSchedule(doc.days, doc.spots);
+  const poolSpots = spotsOfDay(doc.spots, 0);
+  const exportDays: DayRow[] =
+    poolSpots.length > 0 && !doc.days.some((d) => d.day_index === 0)
+      ? [
+          {
+            day_index: 0,
+            label: "候補プール（日程未定）",
+            date: null,
+            departure_point: null,
+            departure_lat: null,
+            departure_lng: null,
+            departure_time: null,
+          },
+          ...doc.days,
+        ]
+      : doc.days;
 
   // 宿泊スポットから trip.lodging を抽出（decided 優先、なければ最初の lodging スポット）
   const lodgingSpots = doc.spots.filter((s) => s.category === "lodging");
@@ -49,7 +65,7 @@ export function buildExportFromDoc(doc: TripDoc, now: Date = new Date()): Voyage
         nickname: p.nickname,
         role: p.role,
       })),
-      days: doc.days.map((d) => {
+      days: exportDays.map((d) => {
         const daySpots = spotsOfDay(doc.spots, d.day_index);
         const daySched = byDay.get(d.day_index);
         const dayOnlyPhotos = doc.photos.filter(

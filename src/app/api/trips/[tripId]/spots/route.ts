@@ -14,7 +14,21 @@ export async function POST(req: Request, { params }: Ctx) {
     const store = getStore();
     const doc = await store.getTripDoc(tripId);
     if (!doc) return jsonError(404, "旅行が見つかりません");
-    if (!doc.days.some((d) => d.day_index === body.data.day_index)) return jsonError(422, "日程が存在しません");
+    if (!doc.days.some((d) => d.day_index === body.data.day_index)) {
+      if (body.data.day_index === 0) {
+        await store.upsertDay(tripId, {
+          day_index: 0,
+          label: "候補プール",
+          date: null,
+          departure_point: null,
+          departure_lat: null,
+          departure_lng: null,
+          departure_time: null,
+        });
+      } else {
+        return jsonError(422, "日程が存在しません");
+      }
+    }
     await store.createSpot(tripId, body.data);
     return NextResponse.json(body.data, { status: 201 });
   } catch (e) {

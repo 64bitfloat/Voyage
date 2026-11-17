@@ -446,39 +446,52 @@ export default function SpotEditorModal({
             )}
           </div>
 
-          {/* 旅程の何日目に行くか（ここで Day 1 / Day 2... を変更可能） */}
+          {/* 旅程の何日目に行くか（候補プールに入れておく or Day 1 / Day 2... を変更可能） */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-neutral-700 flex items-center gap-1">
               <Calendar className="w-3.5 h-3.5 text-blue-600" />
-              <span>訪問する日程（何日目に行くか）</span>
+              <span>訪問する日程（日付未定なら「候補プール」に入れてあとで自動編成できます）</span>
             </label>
             <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-              {days.map((d) => {
-                const active = d.day_index === spot.day_index;
-                return (
-                  <button
-                    key={d.day_index}
-                    type="button"
-                    onClick={() => handleSelectDay(d.day_index)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border whitespace-nowrap transition ${
-                      active
-                        ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    <span>{d.label}</span>
-                    {d.date && (
-                      <span
-                        className={`ml-1 text-[10px] font-normal ${
-                          active ? "text-slate-300" : "text-slate-400"
-                        }`}
-                      >
-                        ({d.date.slice(5).replace("-", "/")})
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+              <button
+                type="button"
+                onClick={() => handleSelectDay(0)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border whitespace-nowrap transition ${
+                  spot.day_index === 0
+                    ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                    : "bg-indigo-50/70 text-indigo-800 border-indigo-200 hover:bg-indigo-100"
+                }`}
+              >
+                📌 候補プール（日程未定）
+              </button>
+              {days
+                .filter((d) => d.day_index >= 1)
+                .map((d) => {
+                  const active = d.day_index === spot.day_index;
+                  return (
+                    <button
+                      key={d.day_index}
+                      type="button"
+                      onClick={() => handleSelectDay(d.day_index)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border whitespace-nowrap transition ${
+                        active
+                          ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span>{d.label}</span>
+                      {d.date && (
+                        <span
+                          className={`ml-1 text-[10px] font-normal ${
+                            active ? "text-slate-300" : "text-slate-400"
+                          }`}
+                        >
+                          ({d.date.slice(5).replace("-", "/")})
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
             </div>
           </div>
 

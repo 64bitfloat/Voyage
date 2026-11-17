@@ -52,6 +52,7 @@ import {
   type TripDoc,
 } from "@/lib/model/types";
 import { computeTripSchedule, spotsOfDay } from "@/lib/schedule/compute";
+import { autoBuildEfficientItinerary } from "@/lib/schedule/auto-planner";
 import { useTripSync } from "@/lib/realtime/sync";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
 import { searchPlaces } from "@/lib/geo/geocode";
@@ -188,6 +189,8 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [recalcBusy, setRecalcBusy] = useState(false);
+  const [autoPlanBusy, setAutoPlanBusy] = useState(false);
+  const [autoPlanMsg, setAutoPlanMsg] = useState<string | null>(null);
   const [depGeoBusy, setDepGeoBusy] = useState(false);
   const [unlocked, setUnlocked] = useState<boolean>(() => {
     if (!initialDoc.trip.has_passcode) return true;
@@ -219,19 +222,30 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
   const activeDay: DayRow = useMemo(
     () =>
-      doc.days.find((d) => d.day_index === activeDayIdx) ??
-      doc.days[0] ?? {
-        day_index: 1,
-        label: "Day 1",
-        date: doc.trip.start_date,
-        departure_point: null,
-        departure_lat: null,
-        departure_lng: null,
-        departure_time: "08:00",
-      },
+      activeDayIdx === 0
+        ? {
+            day_index: 0,
+            label: "候補プール",
+            date: null,
+            departure_point: null,
+            departure_lat: null,
+            departure_lng: null,
+            departure_time: null,
+          }
+        : doc.days.find((d) => d.day_index === activeDayIdx) ??
+          doc.days[0] ?? {
+            day_index: 1,
+            label: "Day 1",
+            date: doc.trip.start_date,
+            departure_point: null,
+            departure_lat: null,
+            departure_lng: null,
+            departure_time: "08:00",
+          },
     [doc.days, activeDayIdx, doc.trip.start_date],
   );
 
+  const poolSpots = useMemo(() => spotsOfDay(doc.spots, 0), [doc.spots]);
   const daySpots = useMemo(
     () => spotsOfDay(doc.spots, activeDay.day_index),
     [doc.spots, activeDay.day_index],
@@ -353,6 +367,37 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       notifyChange();
     } finally {
       setRecalcBusy(false);
+    }
+  }
+
+  /**
+   * 優先度（★メイン・決まった・候補・未定）・営業時間・定休日・宿泊チェックイン時刻・移動距離を考慮して
+   * 全スポット（候補プール＋各Day）を自動的に最適な順番・日程へ編成する
+   */
+  async function handleAutoPlanItinerary() {
+    if (doc.spots.length === 0) return;
+    setAutoPlanBusy(true);
+    setAutoPlanMsg(null);
+    try {
+      const { spots: optimized, summary } = await autoBuildEfficientItinerary(
+        doc.days,
+        doc.spots,
+        true,
+      );
+      const nextDoc: TripDoc = { ...doc, spots: optimized };
+      setDoc(nextDoc);
+      setAutoPlanMsg(summary.message);
+      if (activeDayIdx === 0 && summary.scheduledCount > 0) {
+        setActiveDayIdx(1);
+      }
+      await fetch(`/api/trips/${tripId}/sync`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nextDoc),
+      });
+      notifyChange();
+    } finally {
+      setAutoPlanBusy(false);
     }
   }
 
@@ -757,11 +802,33 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         </div>
       </header>
 
-      {/* 日程セグメントピルタブ（旅程タブ・マップタブ共通で上部にスッキリ表示） */}
+      {/* 日程セグメントピルタブ（候補プール ＋ Day 1 / Day 2 ...） */}
       {(mainTab === "itinerary" || mainTab === "map") && (
-        <div className="bg-white px-3 py-2 border-b border-slate-200/80 shrink-0 z-10">
+        <div className="bg-white px-3 py-2 border-b border-slate-200/80 shrink-0 z-10 space-y-1.5">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              {/* 📌 候補プール（日程未定ストック）タブ */}
+              <button
+                type="button"
+                onClick={() => setActiveDayIdx(0)}
+                className={`px-3 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1 ${
+                  activeDay.day_index === 0
+                    ? "bg-indigo-600 text-white shadow-xs"
+                    : "bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
+                }`}
+              >
+                <span>📌 候補プール</span>
+                <span
+                  className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                    activeDay.day_index === 0
+                      ? "bg-white/20 text-white"
+                      : "bg-indigo-200/70 text-indigo-900"
+                  }`}
+                >
+                  {poolSpots.length}
+                </span>
+              </button>
+
               {doc.days.map((d) => {
                 const active = d.day_index === activeDay.day_index;
                 const dayConflicts = schedule.byDay.get(d.day_index)?.conflicts.length ?? 0;
@@ -804,25 +871,53 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               </button>
             </div>
 
-            {/* 旅程 ⇔ マップ ワンタップ切替ピル */}
-            <button
-              type="button"
-              onClick={() => setMainTab(mainTab === "itinerary" ? "map" : "itinerary")}
-              className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-bold shadow-xs hover:bg-blue-700"
-            >
-              {mainTab === "itinerary" ? (
-                <>
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>マップを見る</span>
-                </>
-              ) : (
-                <>
-                  <ListOrdered className="w-3.5 h-3.5" />
-                  <span>旅程に戻る</span>
-                </>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {doc.spots.length > 0 && (
+                <button
+                  type="button"
+                  disabled={autoPlanBusy}
+                  onClick={handleAutoPlanItinerary}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-extrabold shadow-xs hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50"
+                  title="候補プールと全日程のスポットを優先度・営業時間・移動効率に合わせて自動編成します"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{autoPlanBusy ? "編成中..." : "効率ルート自動編成"}</span>
+                </button>
               )}
-            </button>
+
+              {/* 旅程 ⇔ マップ ワンタップ切替ピル */}
+              <button
+                type="button"
+                onClick={() => setMainTab(mainTab === "itinerary" ? "map" : "itinerary")}
+                className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-blue-600 text-white text-xs font-bold shadow-xs hover:bg-blue-700"
+              >
+                {mainTab === "itinerary" ? (
+                  <>
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">マップを見る</span>
+                  </>
+                ) : (
+                  <>
+                    <ListOrdered className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">旅程に戻る</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
+
+          {autoPlanMsg && (
+            <div className="flex items-center justify-between gap-2 rounded-xl bg-indigo-50 border border-indigo-200 px-3 py-1.5 text-xs font-bold text-indigo-950">
+              <span>{autoPlanMsg}</span>
+              <button
+                type="button"
+                onClick={() => setAutoPlanMsg(null)}
+                className="text-indigo-500 hover:text-indigo-800"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -839,7 +934,30 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         </div>
       ) : mainTab === "itinerary" ? (
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 max-w-3xl w-full mx-auto">
-          {/* 出発設定カード */}
+          {/* 候補プール選択時のガイドカード or Day 1..N の出発設定カード */}
+          {activeDay.day_index === 0 ? (
+            <div className="rounded-2xl bg-indigo-50/80 border border-indigo-200 p-3.5 space-y-2 shadow-2xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="text-xs font-extrabold text-indigo-950">
+                  📌 候補プール（まだ何日目に行くか決めていない場所ストック）
+                </div>
+                {doc.spots.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={autoPlanBusy}
+                    onClick={handleAutoPlanItinerary}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold shadow-xs hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{autoPlanBusy ? "自動編成中..." : "優先度＆移動効率でDay1〜へ自動振り分け"}</span>
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-indigo-900 leading-relaxed">
+                行きたい場所をとりあえずここに追加しておき、優先度（<strong>★メイン / 決まった / 候補 / 未定</strong>）を選んでから上の「自動振り分け（効率ルート自動編成）」を押すと、営業時間・定休日・宿泊先・移動距離を計算して最適な日程と順番に自動で組み込みます！
+              </p>
+            </div>
+          ) : (
           <div className="rounded-2xl bg-white border border-slate-200/90 p-3 space-y-2 shadow-2xs">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-1.5 text-xs font-extrabold text-emerald-800 flex-wrap">
@@ -928,6 +1046,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               </div>
             </div>
           </div>
+          )}
 
           {/* 前日からの宿泊チェックアウト表示（日跨ぎ宿泊がある場合、チェックアウト日の先頭に自動表示） */}
           {daySchedule?.checkoutSpot && (
