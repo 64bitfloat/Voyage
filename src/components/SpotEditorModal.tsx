@@ -314,7 +314,9 @@ export default function SpotEditorModal({
     prevCoords !== null &&
     spot.lat !== null &&
     spot.lng !== null &&
-    (spot.transport_mode === "car" || spot.transport_mode === "walk");
+    (spot.transport_mode === "car" ||
+      spot.transport_mode === "walk" ||
+      spot.transport_mode === "train");
 
   async function handleSelectDay(newDayIdx: number) {
     const targetDay = days.find((d) => d.day_index === newDayIdx);
@@ -378,13 +380,16 @@ export default function SpotEditorModal({
         data.lat !== undefined &&
         data.lng !== null &&
         data.lng !== undefined &&
-        (spot.transport_mode === "car" || spot.transport_mode === "walk")
+        (spot.transport_mode === "car" ||
+          spot.transport_mode === "walk" ||
+          spot.transport_mode === "train")
       ) {
         try {
           const r = await getRouteProvider().route(
             prevCoords,
             { lat: data.lat, lng: data.lng },
             spot.transport_mode,
+            { avoidTolls: Boolean(bhRule.avoidTolls) },
           );
           setSpot((prev) => ({
             ...prev,
@@ -411,13 +416,25 @@ export default function SpotEditorModal({
     }
   }
 
-  async function handleAutoRoute(modeOverride?: "car" | "walk") {
-    const mode = modeOverride ?? (spot.transport_mode === "walk" ? "walk" : "car");
+  async function handleAutoRoute(
+    modeOverride?: "car" | "walk" | "train",
+    avoidTollsOverride?: boolean,
+  ) {
+    const mode =
+      modeOverride ??
+      (spot.transport_mode === "walk"
+        ? "walk"
+        : spot.transport_mode === "train"
+          ? "train"
+          : "car");
+    const avoidTolls = avoidTollsOverride ?? Boolean(bhRule.avoidTolls);
     if (!prevCoords || spot.lat === null || spot.lng === null) return;
     setCalcBusy(true);
     setCalcErr(null);
     try {
-      const r = await getRouteProvider().route(prevCoords, { lat: spot.lat, lng: spot.lng }, mode);
+      const r = await getRouteProvider().route(prevCoords, { lat: spot.lat, lng: spot.lng }, mode, {
+        avoidTolls,
+      });
       setSpot((prev) => ({
         ...prev,
         transport_mode: mode,
@@ -467,7 +484,10 @@ export default function SpotEditorModal({
         is_fixed: Boolean(spot.is_fixed && hasTargetTime && resTimeHHMM),
         name: spot.name.trim(),
         place_url: gmapUrl.trim() ? gmapUrl.trim() : spot.place_url,
-        transport_note: serializeBusinessHours({ ...bhRule, targetTime: targetTimeForNote }),
+        transport_note: serializeBusinessHours({
+          ...bhRule,
+          targetTime: targetTimeForNote,
+        }),
         reservation_time,
         check_in,
         check_out,
@@ -1094,19 +1114,37 @@ export default function SpotEditorModal({
 
           {/* 前の地点からの移動手段・移動時間 */}
           <div className="rounded-xl bg-neutral-50 border border-neutral-200 p-3 space-y-2.5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <span className="text-xs font-bold text-neutral-800">前の地点からの移動</span>
-              {canAutoRoute && (
-                <button
-                  type="button"
-                  disabled={calcBusy}
-                  onClick={() => handleAutoRoute()}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50"
-                >
-                  <Calculator className="w-3.5 h-3.5" />
-                  {calcBusy ? "計算中..." : "OSRMで自動計算"}
-                </button>
-              )}
+              <div className="flex items-center gap-1.5">
+                {prevCoords && spot.lat !== null && spot.lng !== null && (
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&origin=${prevCoords.lat},${prevCoords.lng}&destination=${spot.lat},${spot.lng}&travelmode=${
+                      spot.transport_mode === "walk"
+                        ? "walking"
+                        : spot.transport_mode === "train"
+                          ? "transit"
+                          : "driving"
+                    }${spot.transport_mode === "car" && bhRule.avoidTolls ? "&dir_action=navigate&avoid=tolls,highways" : ""}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-neutral-300 text-[11px] font-bold text-neutral-700 hover:bg-neutral-100"
+                  >
+                    Googleマップ↗
+                  </a>
+                )}
+                {canAutoRoute && (
+                  <button
+                    type="button"
+                    disabled={calcBusy}
+                    onClick={() => handleAutoRoute()}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    <Calculator className="w-3.5 h-3.5" />
+                    {calcBusy ? "計算中..." : "自動計算"}
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-4 gap-1.5">
@@ -1117,7 +1155,7 @@ export default function SpotEditorModal({
                   onClick={() => {
                     setSpot((s) => ({ ...s, transport_mode: m.value }));
                     if (
-                      (m.value === "car" || m.value === "walk") &&
+                      (m.value === "car" || m.value === "walk" || m.value === "train") &&
                       prevCoords &&
                       spot.lat !== null &&
                       spot.lng !== null
@@ -1135,6 +1173,44 @@ export default function SpotEditorModal({
                 </button>
               ))}
             </div>
+
+            {/* 車移動時: 高速道路を使う / 下道のみ（有料回避）切替 */}
+            {spot.transport_mode === "car" && (
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBhRule((prev) => ({ ...prev, avoidTolls: false }));
+                    if (prevCoords && spot.lat !== null && spot.lng !== null) {
+                      void handleAutoRoute("car", false);
+                    }
+                  }}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition ${
+                    !bhRule.avoidTolls
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                      : "bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-100"
+                  }`}
+                >
+                  🛣️ 高速・有料道路を使う
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBhRule((prev) => ({ ...prev, avoidTolls: true }));
+                    if (prevCoords && spot.lat !== null && spot.lng !== null) {
+                      void handleAutoRoute("car", true);
+                    }
+                  }}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition ${
+                    bhRule.avoidTolls
+                      ? "bg-amber-600 text-white border-amber-600 shadow-2xs"
+                      : "bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-100"
+                  }`}
+                >
+                  🚗 下道のみ（高速回避）
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2">
               <div>

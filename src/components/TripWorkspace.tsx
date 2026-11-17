@@ -56,7 +56,7 @@ import { computeTripSchedule, spotsOfDay } from "@/lib/schedule/compute";
 import { autoBuildEfficientItinerary } from "@/lib/schedule/auto-planner";
 import { useTripSync } from "@/lib/realtime/sync";
 import { estimateRouteFallback, getRouteProvider, type LatLng } from "@/lib/routing";
-import { parseOsmOpeningHours, serializeBusinessHours } from "@/lib/geo/business-hours";
+import { deserializeBusinessHours, parseOsmOpeningHours, serializeBusinessHours } from "@/lib/geo/business-hours";
 import { toTokyoDate, toTokyoHHMM } from "@/lib/datetime";
 import type { PendingPin } from "./TripMap";
 import SpotCard from "./SpotCard";
@@ -320,9 +320,16 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           prev &&
           s.lat !== null &&
           s.lng !== null &&
-          (s.transport_mode === "car" || s.transport_mode === "walk")
+          (s.transport_mode === "car" || s.transport_mode === "walk" || s.transport_mode === "train")
         ) {
-          const est = estimateRouteFallback(prev, { lat: s.lat, lng: s.lng }, s.transport_mode);
+          const avoidTolls =
+            s.transport_mode === "car" && Boolean(deserializeBusinessHours(s.transport_note).avoidTolls);
+          const est = estimateRouteFallback(
+            prev,
+            { lat: s.lat, lng: s.lng },
+            s.transport_mode,
+            avoidTolls,
+          );
           return {
             ...s,
             sort_order: i,
@@ -338,7 +345,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         spots: [...prev.spots.filter((x) => x.day_index !== day.day_index), ...instant],
       }));
 
-      // 2. 続いて OSRM API で精密な道路ルート（失敗時は概算フォールバック）を取得して保存
+      // 2. 続いてルートAPIで精密な移動時間・距離（失敗時は概算フォールバック）を取得して保存
       const updated: SpotRow[] = [];
       for (let i = 0; i < instant.length; i++) {
         const s = instant[i];
@@ -355,12 +362,15 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           prev &&
           s.lat !== null &&
           s.lng !== null &&
-          (s.transport_mode === "car" || s.transport_mode === "walk")
+          (s.transport_mode === "car" || s.transport_mode === "walk" || s.transport_mode === "train")
         ) {
+          const avoidTolls =
+            s.transport_mode === "car" && Boolean(deserializeBusinessHours(s.transport_note).avoidTolls);
           const r = await getRouteProvider().route(
             prev,
             { lat: s.lat, lng: s.lng },
             s.transport_mode,
+            { avoidTolls },
           );
           const nextSpot: SpotRow = {
             ...s,
@@ -540,13 +550,19 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       prev &&
       finalSpot.lat !== null &&
       finalSpot.lng !== null &&
-      (finalSpot.transport_mode === "car" || finalSpot.transport_mode === "walk")
+      (finalSpot.transport_mode === "car" ||
+        finalSpot.transport_mode === "walk" ||
+        finalSpot.transport_mode === "train")
     ) {
       try {
+        const avoidTolls =
+          finalSpot.transport_mode === "car" &&
+          Boolean(deserializeBusinessHours(finalSpot.transport_note).avoidTolls);
         const r = await getRouteProvider().route(
           prev,
           { lat: finalSpot.lat, lng: finalSpot.lng },
           finalSpot.transport_mode,
+          { avoidTolls },
         );
         finalSpot = {
           ...finalSpot,

@@ -135,6 +135,17 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit }: SpotC
                   ({(spot.transport_distance_m / 1000).toFixed(1)}km)
                 </span>
               )}
+              {spot.transport_mode === "car" && (
+                <span
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                    bhRule.avoidTolls
+                      ? "bg-amber-50 text-amber-700 border border-amber-200/80"
+                      : "bg-blue-50 text-blue-700 border border-blue-200/80"
+                  }`}
+                >
+                  {bhRule.avoidTolls ? "下道" : "高速"}
+                </span>
+              )}
             </span>
             {timing && timing.wait_minutes > 0 && (
               <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">

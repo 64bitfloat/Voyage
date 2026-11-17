@@ -36,6 +36,8 @@ export interface BusinessHoursRule {
    * - is_fixed（予約固定）とは別枠で保持し、「予約まで待機●分」やスケジュール破綻にはしない
    */
   targetTime?: string | null;
+  /** 車移動時に高速道路・有料道路を使わない（下道のみ）か */
+  avoidTolls?: boolean;
   /**
    * 「どっちか1つ」＆「時間帯・日程振り分け」用の枠タグ（複数選択可）
    * 同じ id を持つ枠タグには、自動編成時に最大1スポットだけが選ばれる
@@ -229,6 +231,7 @@ export function serializeBusinessHours(rule: BusinessHoursRule): string {
     !rule.policyCheckIn &&
     !rule.policyCheckOut &&
     !rule.targetTime &&
+    !rule.avoidTolls &&
     slots.length === 0
   ) {
     return "";
@@ -242,13 +245,22 @@ export function serializeBusinessHours(rule: BusinessHoursRule): string {
     policyCheckIn: rule.policyCheckIn ?? null,
     policyCheckOut: rule.policyCheckOut ?? null,
     targetTime: rule.targetTime ?? null,
+    avoidTolls: rule.avoidTolls ?? false,
     slotTags: slots,
   });
 }
 
 export function deserializeBusinessHours(stored: string | null | undefined): BusinessHoursRule {
   if (!stored)
-    return { open: null, close: null, closedDays: [], rawText: "", targetTime: null, slotTags: [] };
+    return {
+      open: null,
+      close: null,
+      closedDays: [],
+      rawText: "",
+      targetTime: null,
+      avoidTolls: false,
+      slotTags: [],
+    };
   try {
     const obj = JSON.parse(stored) as {
       bh?: number;
@@ -259,6 +271,7 @@ export function deserializeBusinessHours(stored: string | null | undefined): Bus
       policyCheckIn?: string | null;
       policyCheckOut?: string | null;
       targetTime?: string | null;
+      avoidTolls?: boolean;
       slotTags?: ChoiceSlotTag[];
     };
     if (obj && obj.bh === 1) {
@@ -270,13 +283,22 @@ export function deserializeBusinessHours(stored: string | null | undefined): Bus
         policyCheckIn: obj.policyCheckIn ?? null,
         policyCheckOut: obj.policyCheckOut ?? null,
         targetTime: obj.targetTime ?? null,
+        avoidTolls: Boolean(obj.avoidTolls),
         slotTags: Array.isArray(obj.slotTags) ? obj.slotTags : [],
       };
     }
   } catch {
     // not JSON
   }
-  return { open: null, close: null, closedDays: [], rawText: "", targetTime: null, slotTags: [] };
+  return {
+    open: null,
+    close: null,
+    closedDays: [],
+    rawText: "",
+    targetTime: null,
+    avoidTolls: false,
+    slotTags: [],
+  };
 }
 
 function hhmmToMin(hhmm: string): number {
