@@ -36,27 +36,28 @@ export async function GET(req: Request, { params }: Ctx) {
   const decodedSnapshot = decodeDocSnapshot(snapshotParam);
 
   const store = getStore();
-  let doc = await store.getTripDoc(tripId);
+  let doc = await store.getTripDoc(tripId).catch(() => null);
   if (decodedSnapshot && decodedSnapshot.trip.id === tripId) {
-    // URLスナップショットが渡された場合、DBが空（MemoryStore）ならスナップショットを採用
     if (!doc || doc.spots.length === 0) {
       doc = decodedSnapshot;
     }
   }
-  if (!doc && store.kind === "memory") {
+  if (!doc) {
     const { initialDays } = await import("@/lib/model/types");
-    await store.createTrip(
-      {
-        id: tripId,
-        title: "新しい旅行しおり",
-        start_date: null,
-        end_date: null,
-        notes: "",
-      },
-      initialDays(null, null),
-      null,
-    );
-    doc = await store.getTripDoc(tripId);
+    await store
+      .createTrip(
+        {
+          id: tripId,
+          title: "新しい旅行しおり",
+          start_date: null,
+          end_date: null,
+          notes: "",
+        },
+        initialDays(null, null),
+        null,
+      )
+      .catch(() => {});
+    doc = await store.getTripDoc(tripId).catch(() => null);
   }
   if (!doc) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
