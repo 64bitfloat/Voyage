@@ -55,7 +55,7 @@ import {
 import { computeTripSchedule, spotsOfDay } from "@/lib/schedule/compute";
 import { autoBuildEfficientItinerary } from "@/lib/schedule/auto-planner";
 import { useTripSync } from "@/lib/realtime/sync";
-import { getRouteProvider, type LatLng } from "@/lib/routing";
+import { estimateRouteFallback, getRouteProvider, type LatLng } from "@/lib/routing";
 import { parseOsmOpeningHours, serializeBusinessHours } from "@/lib/geo/business-hours";
 import { toTokyoDate, toTokyoHHMM } from "@/lib/datetime";
 import type { PendingPin } from "./TripMap";
@@ -302,16 +302,16 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
     setRecalcBusy(true);
     try {
       const co = schedule.byDay.get(day.day_index)?.checkoutSpot;
-      const updated: SpotRow[] = [];
-      for (let i = 0; i < ordered.length; i++) {
-        const s = ordered[i];
+      const depLat = day.departure_lat ?? co?.lat ?? null;
+      const depLng = day.departure_lng ?? co?.lng ?? null;
+
+      // 1. まず即座に距離ベースの概算値で全区間を更新（古い並び順の距離が残るのを防ぐ）
+      const instant: SpotRow[] = ordered.map((s, i) => {
         const prev: LatLng | null =
           i === 0
-            ? day.departure_lat !== null && day.departure_lng !== null
-              ? { lat: day.departure_lat, lng: day.departure_lng }
-              : co && co.lat !== null && co.lng !== null
-                ? { lat: co.lat, lng: co.lng }
-                : null
+            ? depLat !== null && depLng !== null
+              ? { lat: depLat, lng: depLng }
+              : null
             : ordered[i - 1].lat !== null && ordered[i - 1].lng !== null
               ? { lat: ordered[i - 1].lat!, lng: ordered[i - 1].lng! }
               : null;
@@ -322,33 +322,64 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           s.lng !== null &&
           (s.transport_mode === "car" || s.transport_mode === "walk")
         ) {
-          try {
-            const r = await getRouteProvider().route(
-              prev,
-              { lat: s.lat, lng: s.lng },
-              s.transport_mode,
-            );
-            const nextSpot: SpotRow = {
-              ...s,
-              sort_order: i,
+          const est = estimateRouteFallback(prev, { lat: s.lat, lng: s.lng }, s.transport_mode);
+          return {
+            ...s,
+            sort_order: i,
+            transport_duration_minutes: est.duration_minutes,
+            transport_distance_m: est.distance_m,
+          };
+        }
+        return { ...s, sort_order: i };
+      });
+
+      setDoc((prev) => ({
+        ...prev,
+        spots: [...prev.spots.filter((x) => x.day_index !== day.day_index), ...instant],
+      }));
+
+      // 2. 続いて OSRM API で精密な道路ルート（失敗時は概算フォールバック）を取得して保存
+      const updated: SpotRow[] = [];
+      for (let i = 0; i < instant.length; i++) {
+        const s = instant[i];
+        const prev: LatLng | null =
+          i === 0
+            ? depLat !== null && depLng !== null
+              ? { lat: depLat, lng: depLng }
+              : null
+            : instant[i - 1].lat !== null && instant[i - 1].lng !== null
+              ? { lat: instant[i - 1].lat!, lng: instant[i - 1].lng! }
+              : null;
+
+        if (
+          prev &&
+          s.lat !== null &&
+          s.lng !== null &&
+          (s.transport_mode === "car" || s.transport_mode === "walk")
+        ) {
+          const r = await getRouteProvider().route(
+            prev,
+            { lat: s.lat, lng: s.lng },
+            s.transport_mode,
+          );
+          const nextSpot: SpotRow = {
+            ...s,
+            sort_order: i,
+            transport_duration_minutes: r.duration_minutes,
+            transport_distance_m: r.distance_m,
+          };
+          updated.push(nextSpot);
+          await fetch(`/api/trips/${tripId}/spots/${s.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
               transport_duration_minutes: r.duration_minutes,
               transport_distance_m: r.distance_m,
-            };
-            updated.push(nextSpot);
-            await fetch(`/api/trips/${tripId}/spots/${s.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                transport_duration_minutes: r.duration_minutes,
-                transport_distance_m: r.distance_m,
-              }),
-            });
-            continue;
-          } catch {
-            // OSRM到達不可時は既存の移動時間を維持
-          }
+            }),
+          });
+        } else {
+          updated.push(s);
         }
-        updated.push({ ...s, sort_order: i });
       }
 
       setDoc((prev) => ({
@@ -528,7 +559,8 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
     }
 
     if (editingSpot?.isNew) {
-      setDoc((d) => ({ ...d, spots: [...d.spots, finalSpot] }));
+      const nextSpotsList = [...doc.spots, finalSpot];
+      setDoc((d) => ({ ...d, spots: nextSpotsList }));
       if (finalSpot.day_index === 0) {
         setMainTab("pool");
       } else if (finalSpot.day_index !== activeDayIdx) {
@@ -539,11 +571,12 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(finalSpot),
       });
+      if (finalSpot.day_index >= 1) {
+        void recalculateDayRoutes(targetDay, spotsOfDay(nextSpotsList, finalSpot.day_index));
+      }
     } else {
-      setDoc((d) => ({
-        ...d,
-        spots: d.spots.map((x) => (x.id === finalSpot.id ? finalSpot : x)),
-      }));
+      const nextSpotsList = doc.spots.map((x) => (x.id === finalSpot.id ? finalSpot : x));
+      setDoc((d) => ({ ...d, spots: nextSpotsList }));
       if (finalSpot.day_index === 0 && editingSpot?.spot.day_index !== 0) {
         setMainTab("pool");
       } else if (finalSpot.day_index >= 1 && finalSpot.day_index !== activeDayIdx) {
@@ -554,6 +587,10 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(finalSpot),
       });
+      // 情報や日程が変わった際もその日の全区間の距離・時間を自動再計算する
+      if (finalSpot.day_index >= 1) {
+        void recalculateDayRoutes(targetDay, spotsOfDay(nextSpotsList, finalSpot.day_index));
+      }
     }
 
     // 宿泊スポットでチェックアウト日時が設定されている場合、該当する翌日（チェックアウト日）の出発設定を宿泊地座標＆チェックアウト時刻で自動更新する
@@ -593,11 +630,19 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   }
 
   async function handleDeleteSpot(spotId: string) {
+    const target = doc.spots.find((x) => x.id === spotId);
+    const nextSpotsList = doc.spots.filter((x) => x.id !== spotId);
     setDoc((d) => ({
       ...d,
-      spots: d.spots.filter((x) => x.id !== spotId),
+      spots: nextSpotsList,
     }));
     await fetch(`/api/trips/${tripId}/spots/${spotId}`, { method: "DELETE" });
+    if (target && target.day_index >= 1) {
+      const targetDay = doc.days.find((d) => d.day_index === target.day_index);
+      if (targetDay) {
+        void recalculateDayRoutes(targetDay, spotsOfDay(nextSpotsList, target.day_index));
+      }
+    }
     notifyChange();
   }
 
