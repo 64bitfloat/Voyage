@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { X, Copy, Check, Share2, Link2 } from "lucide-react";
+import { X, Copy, Check, Share2, Link2, Hash } from "lucide-react";
 import type { TripDoc } from "@/lib/model/types";
-import { encodeDocSnapshot } from "@/lib/share/snapshot";
 
 interface ShareTripModalProps {
   doc: TripDoc;
@@ -28,8 +27,8 @@ function copyTextFallback(text: string): boolean {
 }
 
 export default function ShareTripModal({ doc, onClose }: ShareTripModalProps) {
-  const [copied, setCopied] = useState(false);
-  const [includeBackupHash, setIncludeBackupHash] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
 
   // モーダルを開いた時点でサーバー側ストアへ最新データを同期しておく
   useEffect(() => {
@@ -42,24 +41,35 @@ export default function ShareTripModal({ doc, onClose }: ShareTripModalProps) {
 
   const shareUrl = useMemo(() => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const cleanUrl = `${origin}/trip/${doc.trip.id}`;
-    if (!includeBackupHash) return cleanUrl;
-    const snap = encodeDocSnapshot(doc);
-    return `${cleanUrl}#s=${snap}`;
-  }, [doc, includeBackupHash]);
+    return `${origin}/trip/${doc.trip.id}`;
+  }, [doc.trip.id]);
 
-  async function handleCopy() {
+  async function handleCopyUrl() {
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareUrl);
-        setCopied(true);
+        setCopiedUrl(true);
       } else if (copyTextFallback(shareUrl)) {
-        setCopied(true);
+        setCopiedUrl(true);
       }
     } catch {
-      if (copyTextFallback(shareUrl)) setCopied(true);
+      if (copyTextFallback(shareUrl)) setCopiedUrl(true);
     }
-    setTimeout(() => setCopied(false), 2500);
+    setTimeout(() => setCopiedUrl(false), 2500);
+  }
+
+  async function handleCopyId() {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(doc.trip.id);
+        setCopiedId(true);
+      } else if (copyTextFallback(doc.trip.id)) {
+        setCopiedId(true);
+      }
+    } catch {
+      if (copyTextFallback(doc.trip.id)) setCopiedId(true);
+    }
+    setTimeout(() => setCopiedId(false), 2500);
   }
 
   async function handleNativeShare() {
@@ -67,14 +77,14 @@ export default function ShareTripModal({ doc, onClose }: ShareTripModalProps) {
       try {
         await navigator.share({
           title: `${doc.trip.title} — Voyage しおり`,
-          text: `「${doc.trip.title}」の旅行しおりを共有します`,
+          text: `「${doc.trip.title}」の共同編集ルームURL（部屋ID: ${doc.trip.id}）`,
           url: shareUrl,
         });
       } catch {
         // user cancelled
       }
     } else {
-      await handleCopy();
+      await handleCopyUrl();
     }
   }
 
@@ -87,9 +97,9 @@ export default function ShareTripModal({ doc, onClose }: ShareTripModalProps) {
               <Share2 className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-extrabold">しおりを友人に共有</h2>
+              <h2 className="text-sm font-extrabold">共同編集ルームを友人に共有</h2>
               <p className="text-[11px] text-slate-500">
-                このURLを友人に送るとしおりを開けます
+                URLを開くか、トップ画面で部屋IDを入力すると同じ部屋に入れます
               </p>
             </div>
           </div>
@@ -102,48 +112,66 @@ export default function ShareTripModal({ doc, onClose }: ShareTripModalProps) {
           </button>
         </div>
 
-        <div className="space-y-2">
+        {/* 1. 専用URL */}
+        <div className="space-y-1.5">
           <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
             <Link2 className="w-3.5 h-3.5 text-blue-600" />
-            <span>共有用URL（短い標準リンク）</span>
+            <span>部屋への直リンクURL</span>
           </label>
-          <input
-            type="text"
-            readOnly
-            value={shareUrl}
-            onFocus={(e) => e.currentTarget.select()}
-            onClick={(e) => e.currentTarget.select()}
-            className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-xs font-mono text-slate-800"
-          />
-          <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer pt-0.5">
+          <div className="flex gap-1.5">
             <input
-              type="checkbox"
-              checked={includeBackupHash}
-              onChange={(e) => setIncludeBackupHash(e.target.checked)}
+              type="text"
+              readOnly
+              value={shareUrl}
+              onFocus={(e) => e.currentTarget.select()}
+              onClick={(e) => e.currentTarget.select()}
+              className="flex-1 px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-xs font-mono text-slate-800"
             />
-            <span>URL自体にも全データを埋め込む（外部ブラウザ・LINE送信用）</span>
+            <button
+              type="button"
+              onClick={handleCopyUrl}
+              className="px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 shrink-0 inline-flex items-center gap-1"
+            >
+              {copiedUrl ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedUrl ? "コピー済" : "コピー"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 2. 部屋ID（トップ画面から入る用） */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+            <Hash className="w-3.5 h-3.5 text-indigo-600" />
+            <span>部屋ID（トップ画面からIDで入室する場合）</span>
           </label>
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              readOnly
+              value={doc.trip.id}
+              onFocus={(e) => e.currentTarget.select()}
+              onClick={(e) => e.currentTarget.select()}
+              className="flex-1 px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-xs font-mono text-slate-800"
+            />
+            <button
+              type="button"
+              onClick={handleCopyId}
+              className="px-3 py-2 rounded-xl bg-slate-200 text-slate-800 text-xs font-bold hover:bg-slate-300 shrink-0 inline-flex items-center gap-1"
+            >
+              {copiedId ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedId ? "コピー済" : "IDコピー"}</span>
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="w-full py-2.5 px-4 rounded-xl bg-blue-600 text-white text-xs font-extrabold shadow-xs hover:bg-blue-700 inline-flex items-center justify-center gap-1.5"
-          >
-            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            <span>{copied ? "コピーしました！" : "URLをコピー"}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleNativeShare}
-            className="w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-extrabold shadow-xs hover:bg-slate-800 inline-flex items-center justify-center gap-1.5"
-          >
-            <Share2 className="w-4 h-4" />
-            <span>アプリで送る (LINE等)</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleNativeShare}
+          className="w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-extrabold shadow-xs hover:bg-slate-800 inline-flex items-center justify-center gap-1.5"
+        >
+          <Share2 className="w-4 h-4" />
+          <span>LINE等のアプリで送る</span>
+        </button>
       </div>
     </div>
   );

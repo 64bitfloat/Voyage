@@ -52,7 +52,6 @@ import { useTripSync } from "@/lib/realtime/sync";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
 import { searchPlaces } from "@/lib/geo/geocode";
 import { toTokyoHHMM } from "@/lib/datetime";
-import { decodeDocSnapshot } from "@/lib/share/snapshot";
 import type { PendingPin } from "./TripMap";
 import SpotCard from "./SpotCard";
 import SpotEditorModal from "./SpotEditorModal";
@@ -91,21 +90,20 @@ function normalizeDays(doc: TripDoc): TripDoc {
 function readStoredTrip(base: TripDoc): TripDoc {
   if (typeof window === "undefined") return base;
   try {
-    // 1. URLハッシュ (#s=...) またはクエリ (?s=...) に共有スナップショットがあれば最優先で復元
-    const hashStr = window.location.hash.startsWith("#")
-      ? window.location.hash.slice(1)
-      : window.location.hash;
-    const hashParams = new URLSearchParams(hashStr);
-    const searchParams = new URLSearchParams(window.location.search);
-    const snapToken = hashParams.get("s") ?? searchParams.get("s");
-    if (snapToken) {
-      const fromSnap = decodeDocSnapshot(snapToken);
-      if (fromSnap && fromSnap.trip.id === base.trip.id) {
-        return normalizeDays(fromSnap);
-      }
+    // 1. サーバー側（Supabase）に既にスポットや参加者等の実データがある場合はサーバーの最新状態を優先する
+    const serverHasContent =
+      base.spots.length > 0 ||
+      base.participants.length > 0 ||
+      base.costs.length > 0 ||
+      base.belongings.length > 0 ||
+      base.dishes.length > 0 ||
+      (base.trip.title !== "新しい旅行しおり" && base.trip.title !== "");
+
+    if (serverHasContent) {
+      return base;
     }
 
-    // 2. ローカル保存済みのしおりデータ (voyage:doc:<id>) があれば復元
+    // 2. サーバーが空枠（Supabase未接続のMemoryStore別インスタンス等）の場合のみローカルキャッシュを復元
     const cached = localStorage.getItem(`voyage:doc:${base.trip.id}`);
     if (cached) {
       const parsed = JSON.parse(cached) as TripDoc;

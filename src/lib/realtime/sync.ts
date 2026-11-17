@@ -56,7 +56,15 @@ export function useTripSync(tripId: string, onRemoteChange: () => void) {
       supaChannelRef.current = ch;
     }
 
+    // 定期ポーリング（4秒ごと・タブがアクティブな時のみ）で確実に双方のブラウザを同期
+    const pollTimer = setInterval(() => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        cbRef.current();
+      }
+    }, 4000);
+
     return () => {
+      clearInterval(pollTimer);
       bcRef.current?.close();
       bcRef.current = null;
       if (supaChannelRef.current && sb) {
