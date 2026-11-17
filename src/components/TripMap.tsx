@@ -80,9 +80,32 @@ function MapFitBounds({ pointsKey, points }: { pointsKey: string; points: [numbe
       map.setView(points[0], 13);
       return;
     }
-    map.fitBounds(points, { padding: [48, 48], maxZoom: 15 });
+    map.fitBounds(points, { paddingTopLeft: [48, 84], paddingBottomRight: [48, 48], maxZoom: 15 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, pointsKey]);
+  return null;
+}
+
+/**
+ * マーカーがタップされて吹き出し（Popup）が開いたとき、
+ * 上部の検索バーに隠れないよう、ピンが画面のやや下（吹き出しが画面中央）に来るように地図を移動する
+ */
+function MapPanToMarker({
+  target,
+}: {
+  target: { lat: number; lng: number; seq: number } | null;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    if (!target) return;
+    const zoom = map.getZoom();
+    const point = map.project([target.lat, target.lng], zoom);
+    const size = map.getSize();
+    // 画面高さの約18%分だけ中心を北（画面上方向）へずらす → ピンが画面下寄りになり、上の吹き出しが画面中央に来る
+    const offsetY = Math.min(130, Math.round(size.y * 0.18));
+    const shiftedCenter = map.unproject([point.x, point.y - offsetY], zoom);
+    map.panTo(shiftedCenter, { animate: true, duration: 0.4 });
+  }, [map, target]);
   return null;
 }
 
@@ -116,6 +139,7 @@ export default function TripMap({
   const [searching, setSearching] = useState(false);
   const [pending, setPending] = useState<PendingPin | null>(null);
   const [flyTarget, setFlyTarget] = useState<{ lat: number; lng: number } | null>(null);
+  const [panTarget, setPanTarget] = useState<{ lat: number; lng: number; seq: number } | null>(null);
 
   const depLat = day.departure_lat ?? checkoutSpot?.lat ?? null;
   const depLng = day.departure_lng ?? checkoutSpot?.lng ?? null;
@@ -257,10 +281,11 @@ export default function TripMap({
         />
         <MapFitBounds pointsKey={pointsKey} points={polylinePoints} />
         <MapFlyTo target={flyTarget} />
+        <MapPanToMarker target={panTarget} />
 
         {depLat !== null && depLng !== null && (
           <Marker position={[depLat, depLng]} icon={departureIcon}>
-            <Popup>
+            <Popup autoPanPaddingTopLeft={[20, 84]}>
               <div className="text-xs font-semibold">出発: {depName}</div>
             </Popup>
           </Marker>
@@ -276,8 +301,16 @@ export default function TripMap({
               key={s.id}
               position={[s.lat, s.lng]}
               icon={makeNumberIcon(idx + 1, CATEGORY_COLOR[s.category], s.status)}
+              eventHandlers={{
+                click: () =>
+                  setPanTarget((prev) => ({
+                    lat: s.lat!,
+                    lng: s.lng!,
+                    seq: (prev?.seq ?? 0) + 1,
+                  })),
+              }}
             >
-              <Popup>
+              <Popup autoPanPaddingTopLeft={[20, 84]} autoPanPaddingBottomRight={[20, 24]}>
                 <div className="min-w-[190px] max-w-[240px] space-y-1.5 py-0.5">
                   <div className="text-xs font-extrabold text-slate-900 leading-snug">
                     {idx + 1}. {s.name}
