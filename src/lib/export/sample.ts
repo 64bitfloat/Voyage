@@ -35,8 +35,8 @@ export const SAMPLE_EXPORT: VoyageExportInput = {
       check_out: "2026-12-13T10:00:00+09:00",
     },
     participants: [
-      { full_name: "松林凜", nickname: "りん", role: "" },
-      { full_name: "横関海翔", nickname: "かいと", role: "" },
+      { full_name: "山田太郎", nickname: "たろう", role: "" },
+      { full_name: "佐藤花子", nickname: "はなこ", role: "" },
     ],
     days: [
       {
@@ -49,7 +49,7 @@ export const SAMPLE_EXPORT: VoyageExportInput = {
             id: SAMPLE_IDS.photoDay0,
             url: "https://example.supabase.co/storage/v1/object/public/photos/day0.jpg",
             caption: "買い出し完了",
-            photographer_nickname: "かいと",
+            photographer_nickname: "はなこ",
             taken_at: "2026-12-11T19:30:00+09:00",
           },
         ],
@@ -83,7 +83,7 @@ export const SAMPLE_EXPORT: VoyageExportInput = {
                 id: SAMPLE_IDS.photo1,
                 url: "https://example.supabase.co/storage/v1/object/public/photos/lake.jpg",
                 caption: "",
-                photographer_nickname: "りん",
+                photographer_nickname: "たろう",
                 taken_at: "2026-12-12T10:05:00+09:00",
               },
             ],
@@ -118,14 +118,14 @@ export const SAMPLE_EXPORT: VoyageExportInput = {
         category: "food",
         total_paid_amount_jpy: 11500,
         currency: "JPY",
-        payer_full_name: "松林凜",
+        payer_full_name: "山田太郎",
         related_spot_id: SAMPLE_IDS.spotLunch,
         related_day_index: 1,
         is_settled: false,
         note: "コース各5000円＋ドリンク",
         individual_breakdown: [
-          { consumer_full_name: "松林凜", amount_jpy: 1000, note: "ドリンクA" },
-          { consumer_full_name: "横関海翔", amount_jpy: 500, note: "ドリンクB" },
+          { consumer_full_name: "山田太郎", amount_jpy: 1000, note: "ドリンクA" },
+          { consumer_full_name: "佐藤花子", amount_jpy: 500, note: "ドリンクB" },
         ],
       },
       {
@@ -135,7 +135,7 @@ export const SAMPLE_EXPORT: VoyageExportInput = {
         category: "lodging",
         total_paid_amount_jpy: 8000,
         currency: "JPY",
-        payer_full_name: "横関海翔",
+        payer_full_name: "佐藤花子",
         related_spot_id: null,
         related_day_index: 1,
         is_settled: false,
@@ -144,7 +144,7 @@ export const SAMPLE_EXPORT: VoyageExportInput = {
       },
     ],
     belongings: [
-      { id: SAMPLE_IDS.belongingWood, name: "薪", is_needed: true, is_prepared: false, assignee_full_name: "松林凜", note: "" },
+      { id: SAMPLE_IDS.belongingWood, name: "薪", is_needed: true, is_prepared: false, assignee_full_name: "山田太郎", note: "" },
     ],
     dishes: [
       {
@@ -179,15 +179,15 @@ export function makeBrokenSample(): unknown {
   lunch.arrival_planned = "2026-12-12T12:20:00+09:00"; // 予約12:00 に対し20分超過
 
   t.costs[0].total_paid_amount_jpy = 10000; // 共通部分だけ入れてしまった誤り
-  t.costs[0].individual_breakdown.push({ consumer_full_name: "横関海翔", amount_jpy: 9000, note: "誤入力" });
-  t.costs[1].payer_full_name = "かいと"; // ニックネームで入れてしまった誤り
-  t.costs.push({ ...structuredClone(t.costs[1]), id: "6f1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e10", payer_full_name: "横関海翔" }); // 重複
+  t.costs[0].individual_breakdown.push({ consumer_full_name: "佐藤花子", amount_jpy: 9000, note: "誤入力" });
+  t.costs[1].payer_full_name = "はなこ"; // ニックネームで入れてしまった誤り
+  t.costs.push({ ...structuredClone(t.costs[1]), id: "6f1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e10", payer_full_name: "佐藤花子" }); // 重複
   t.costs.push({
     ...structuredClone(t.costs[1]),
     id: "6f1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e11",
     title: "ガソリン",
-    payer_full_name: "横関海翔",
-    individual_breakdown: [{ consumer_full_name: "横関海翔", amount_jpy: 0, note: "" }],
+    payer_full_name: "佐藤花子",
+    individual_breakdown: [{ consumer_full_name: "佐藤花子", amount_jpy: 0, note: "" }],
   });
 
   return s;

@@ -131,7 +131,7 @@ export default function SpotCard({ index, spot, timing, onEdit }: SpotCardProps)
               >
                 {toTokyoHHMM(timing.arrival)}
               </span>
-              {timing.departure && (
+              {timing.departure && timing.departure !== timing.arrival && (
                 <span className="text-[10px] text-slate-400 font-medium">
                   {toTokyoHHMM(timing.departure)}
                 </span>
@@ -190,10 +190,12 @@ export default function SpotCard({ index, spot, timing, onEdit }: SpotCardProps)
                     メイン
                   </span>
                 )}
-                <span className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 font-medium">
-                  <Clock className="w-3 h-3" />
-                  {spot.stay_minutes}分
-                </span>
+                {!(spot.category === "lodging" && (spot.check_in || spot.check_out)) && (
+                  <span className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 font-medium">
+                    <Clock className="w-3 h-3" />
+                    {spot.stay_minutes}分
+                  </span>
+                )}
                 {spot.is_fixed && spot.reservation_time && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                     予約 {toTokyoHHMM(spot.reservation_time)} 固定

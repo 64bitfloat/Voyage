@@ -153,7 +153,7 @@ export default function TripMap({ day, spots, onPickPlace, onSelectSpot }: TripM
   }
 
   return (
-    <div className="relative h-full w-full select-none">
+    <div className="relative h-full w-full select-none isolate overflow-hidden">
       {/* 地図上の検索バー */}
       <div className="
         absolute top-2.5 left-2.5 right-2.5 z-[1000]

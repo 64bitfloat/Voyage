@@ -70,7 +70,7 @@ export default function ParticipantsPanel({
               required
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              placeholder="例: 松林凜"
+              placeholder="例: 山田太郎"
               className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"
             />
           </div>
@@ -83,7 +83,7 @@ export default function ParticipantsPanel({
               required
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              placeholder="例: りん"
+              placeholder="例: たろう"
               className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"
             />
           </div>

@@ -23,7 +23,6 @@ import {
   AlertTriangle,
   Navigation,
   Clock,
-  Check,
   Calculator,
   Calendar,
   Sparkles,
@@ -33,6 +32,7 @@ import {
   Users,
   Maximize2,
   Minimize2,
+  BedDouble,
 } from "lucide-react";
 import {
   addDays,
@@ -52,7 +52,7 @@ import { useTripSync } from "@/lib/realtime/sync";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
 import { searchPlaces } from "@/lib/geo/geocode";
 import { toTokyoHHMM } from "@/lib/datetime";
-import { decodeDocSnapshot, encodeDocSnapshot } from "@/lib/share/snapshot";
+import { decodeDocSnapshot } from "@/lib/share/snapshot";
 import type { PendingPin } from "./TripMap";
 import SpotCard from "./SpotCard";
 import SpotEditorModal from "./SpotEditorModal";
@@ -61,6 +61,7 @@ import CostsPanel from "./CostsPanel";
 import PrepAndDishesPanel from "./PrepAndDishesPanel";
 import MuseExportModal from "./MuseExportModal";
 import PasscodeGateModal from "./PasscodeGateModal";
+import ShareTripModal from "./ShareTripModal";
 
 const TripMap = dynamic(() => import("./TripMap"), {
   ssr: false,
@@ -149,7 +150,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   const [mapExpanded, setMapExpanded] = useState(false);
   const [editingSpot, setEditingSpot] = useState<{ spot: SpotRow; isNew: boolean } | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [depGeoBusy, setDepGeoBusy] = useState(false);
   const [unlocked, setUnlocked] = useState<boolean>(() => {
@@ -256,6 +257,10 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       if (activeDay.departure_lat !== null && activeDay.departure_lng !== null) {
         return { lat: activeDay.departure_lat, lng: activeDay.departure_lng };
       }
+      const co = daySchedule?.checkoutSpot;
+      if (co && co.lat !== null && co.lng !== null) {
+        return { lat: co.lat, lng: co.lng };
+      }
       return null;
     }
     const prev = list[idx - 1];
@@ -265,6 +270,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   async function recalculateDayRoutes(day: DayRow, ordered: SpotRow[]) {
     setRecalcBusy(true);
     try {
+      const co = schedule.byDay.get(day.day_index)?.checkoutSpot;
       const updated: SpotRow[] = [];
       for (let i = 0; i < ordered.length; i++) {
         const s = ordered[i];
@@ -272,7 +278,9 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           i === 0
             ? day.departure_lat !== null && day.departure_lng !== null
               ? { lat: day.departure_lat, lng: day.departure_lng }
-              : null
+              : co && co.lat !== null && co.lng !== null
+                ? { lat: co.lat, lng: co.lng }
+                : null
             : ordered[i - 1].lat !== null && ordered[i - 1].lng !== null
               ? { lat: ordered[i - 1].lat!, lng: ordered[i - 1].lng! }
               : null;
@@ -594,19 +602,6 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
     notifyChange();
   }
 
-  /**
-   * 共同編集・しおり共有リンクのコピー
-   * - 現在のしおりスナップショットを `?s=...` に付与したURLをコピーするため、
-   *   Supabase未設定でも相手がURLを開いた瞬間にすべての旅程・費用・持ち物・参加者がそのまま表示される
-   */
-  async function handleCopyShareUrl() {
-    const snap = encodeDocSnapshot(doc);
-    const shareUrl = `${window.location.origin}/trip/${tripId}?s=${snap}`;
-    await navigator.clipboard.writeText(shareUrl);
-    setCopiedUrl(true);
-    setTimeout(() => setCopiedUrl(false), 2500);
-  }
-
   return (
     <div className="h-dvh flex flex-col bg-[#f5f6f8] text-slate-900 overflow-hidden">
       {/* パスコードロック画面（初回アクセス時のみ） */}
@@ -619,7 +614,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       )}
 
       {/* iOS Voyage 風グラスモーフィズムヘッダー（タイトル・日程変更対応） */}
-      <header className="px-3.5 py-2 bg-white/90 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between gap-2 shrink-0 z-10">
+      <header className="relative z-[1200] px-3.5 py-2 bg-white/95 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between gap-2 shrink-0">
         <div className="min-w-0 flex-1">
           <input
             type="text"
@@ -662,26 +657,22 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           </div>
         </div>
 
-        {/* 右上アクション（しおり共有URLコピー + 第5.1章「Muse連携用データを出力」ボタン） */}
+        {/* 右上アクション（しおり共有モーダル + 第5.1章「Muse連携用データを出力」ボタン） */}
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
-            onClick={handleCopyShareUrl}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs"
-            title="現在のしおりデータを含めた共有リンクをコピーします"
+            onClick={() => setShowShareModal(true)}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs cursor-pointer"
+            title="現在のしおりデータを含めた共有リンクを表示します"
           >
-            {copiedUrl ? (
-              <Check className="w-3.5 h-3.5 text-emerald-600" />
-            ) : (
-              <Share2 className="w-3.5 h-3.5" />
-            )}
-            <span>{copiedUrl ? "しおりURLをコピーしました" : "しおりを共有"}</span>
+            <Share2 className="w-3.5 h-3.5 text-blue-600" />
+            <span>しおりを共有</span>
           </button>
 
           <button
             type="button"
             onClick={() => setShowExportModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white text-xs font-extrabold shadow-sm hover:from-indigo-700 hover:to-blue-700"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white text-xs font-extrabold shadow-sm hover:from-indigo-700 hover:to-blue-700 cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Muse連携用データを出力</span>
@@ -846,8 +837,56 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                 </div>
               </div>
 
+              {/* 前日からの宿泊チェックアウト表示（日跨ぎ宿泊がある場合、チェックアウト日の先頭に自動表示） */}
+              {daySchedule?.checkoutSpot && (
+                <div className="grid grid-cols-[54px_20px_1fr] items-stretch gap-x-1">
+                  <div className="flex flex-col justify-center py-2 pr-1 text-right font-mono">
+                    <span className="text-xs font-extrabold text-purple-800">
+                      {daySchedule.checkoutSpot.check_out
+                        ? toTokyoHHMM(daySchedule.checkoutSpot.check_out)
+                        : "--:--"}
+                    </span>
+                    <span className="text-[10px] text-purple-500 font-bold">OUT</span>
+                  </div>
+                  <div className="relative flex flex-col items-center">
+                    <div className="w-0.5 flex-1 bg-purple-200" />
+                    <div className="w-6 h-6 rounded-full bg-purple-600 text-white flex items-center justify-center ring-4 ring-purple-100 shadow-xs shrink-0">
+                      <BedDouble className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="w-0.5 flex-1 bg-slate-200" />
+                  </div>
+                  <div className="py-1 pl-1.5 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingSpot({ spot: daySchedule.checkoutSpot!, isNew: false })
+                      }
+                      className="w-full text-left rounded-2xl border border-purple-200 bg-purple-50/70 p-3 shadow-2xs hover:bg-purple-50 transition space-y-1"
+                    >
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-600 text-white">
+                          チェックアウト
+                        </span>
+                        <span className="text-[11px] font-semibold text-purple-800">
+                          前日からの宿泊（タップで編集）
+                        </span>
+                      </div>
+                      <div className="text-sm font-extrabold text-slate-900 truncate">
+                        {daySchedule.checkoutSpot.name}
+                      </div>
+                      {daySchedule.checkoutSpot.address && (
+                        <div className="flex items-center gap-1 text-xs text-slate-500 truncate">
+                          <MapPin className="w-3 h-3 shrink-0 text-purple-400" />
+                          <span className="truncate">{daySchedule.checkoutSpot.address}</span>
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* スポット一覧（Voyage風クロノグラフ軸 + D&D） */}
-              {daySpots.length === 0 ? (
+              {daySpots.length === 0 && !daySchedule?.checkoutSpot ? (
                 <div className="rounded-3xl border border-dashed border-slate-300 bg-white/80 p-6 text-center space-y-2.5">
                   <p className="text-xs text-slate-600">
                     上の地図を検索またはタップしてピンを立て、「しおりに追加」を押してください。
@@ -1035,6 +1074,11 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       {/* Muse連携エクスポートモーダル */}
       {showExportModal && (
         <MuseExportModal doc={doc} onClose={() => setShowExportModal(false)} />
+      )}
+
+      {/* しおり共有モーダル */}
+      {showShareModal && (
+        <ShareTripModal doc={doc} onClose={() => setShowShareModal(false)} />
       )}
     </div>
   );
