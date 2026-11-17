@@ -56,7 +56,6 @@ import { computeTripSchedule, spotsOfDay } from "@/lib/schedule/compute";
 import { autoBuildEfficientItinerary } from "@/lib/schedule/auto-planner";
 import { useTripSync } from "@/lib/realtime/sync";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
-import { searchPlaces } from "@/lib/geo/geocode";
 import { parseOsmOpeningHours, serializeBusinessHours } from "@/lib/geo/business-hours";
 import { toTokyoDate, toTokyoHHMM } from "@/lib/datetime";
 import type { PendingPin } from "./TripMap";
@@ -68,7 +67,7 @@ import PrepAndDishesPanel from "./PrepAndDishesPanel";
 import MuseExportModal from "./MuseExportModal";
 import PasscodeGateModal from "./PasscodeGateModal";
 import ShareTripModal from "./ShareTripModal";
-import TimeSelect from "./TimeSelect";
+import DepartureSettingsModal from "./DepartureSettingsModal";
 
 const TripMap = dynamic(() => import("./TripMap"), {
   ssr: false,
@@ -194,7 +193,6 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [autoPlanBusy, setAutoPlanBusy] = useState(false);
   const [autoPlanMsg, setAutoPlanMsg] = useState<string | null>(null);
-  const [depGeoBusy, setDepGeoBusy] = useState(false);
   const [unlocked, setUnlocked] = useState<boolean>(() => {
     if (!initialDoc.trip.has_passcode) return true;
     if (typeof window !== "undefined") {
@@ -436,25 +434,6 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       body: JSON.stringify(patch),
     });
     notifyChange();
-  }
-
-  async function handleGeocodeDeparture() {
-    if (!activeDay.departure_point?.trim()) return;
-    setDepGeoBusy(true);
-    try {
-      const r = await searchPlaces(activeDay.departure_point);
-      if (r[0]) {
-        const nextDay: DayRow = {
-          ...activeDay,
-          departure_lat: r[0].lat,
-          departure_lng: r[0].lng,
-        };
-        await handleSaveDayPatch({ departure_lat: r[0].lat, departure_lng: r[0].lng });
-        void recalculateDayRoutes(nextDay, daySpots);
-      }
-    } finally {
-      setDepGeoBusy(false);
-    }
   }
 
   async function handleAddDay() {
@@ -1287,129 +1266,17 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
       {/* 出発設定モーダル（タイムスケジュール画面を広く保つため、タップ時のみ開く） */}
       {showDepartureModal && (
-        <div
-          className="fixed inset-0 z-[2300] bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
-          onClick={() => setShowDepartureModal(false)}
-        >
-          <div
-            className="bg-white text-slate-900 w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
-                  <Navigation className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-extrabold">{activeDay.label} の出発設定</h2>
-                  {daySchedule?.checkoutSpot ? (
-                    <p className="text-[11px] text-purple-700 font-semibold">
-                      🏨 宿泊地「{daySchedule.checkoutSpot.name}」と自動連動中
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-slate-500">
-                      変更すると全行程の時刻が自動で再計算されます
-                    </p>
-                  )}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDepartureModal(false)}
-                className="p-1.5 rounded-xl text-slate-500 hover:bg-slate-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-sm">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">日付</label>
-                <input
-                  type="date"
-                  value={activeDay.date ?? ""}
-                  onChange={(e) => handleSaveDayPatch({ date: e.target.value || null })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">出発時刻</label>
-                <TimeSelect
-                  value={
-                    activeDay.departure_time ??
-                    (daySchedule?.checkoutSpot?.check_out
-                      ? toTokyoHHMM(daySchedule.checkoutSpot.check_out)
-                      : null)
-                  }
-                  defaultHour="08"
-                  onChange={(val) => handleSaveDayPatch({ departure_time: val })}
-                  className="w-full justify-between"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  出発地点（場所名・座標取得）
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={
-                      activeDay.departure_point ?? daySchedule?.checkoutSpot?.name ?? ""
-                    }
-                    onChange={(e) =>
-                      setDoc((prev) => ({
-                        ...prev,
-                        days: prev.days.map((d) =>
-                          d.day_index === activeDay.day_index
-                            ? { ...d, departure_point: e.target.value || null }
-                            : d,
-                        ),
-                      }))
-                    }
-                    onBlur={(e) =>
-                      handleSaveDayPatch({ departure_point: e.target.value || null })
-                    }
-                    placeholder="例: 自宅 / 新宿駅"
-                    className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs"
-                  />
-                  <button
-                    type="button"
-                    disabled={depGeoBusy}
-                    onClick={handleGeocodeDeparture}
-                    className="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 shrink-0"
-                  >
-                    {depGeoBusy ? "..." : "座標取得"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200">
-              {daySpots.length > 0 ? (
-                <button
-                  type="button"
-                  disabled={recalcBusy}
-                  onClick={() => recalculateDayRoutes(activeDay, daySpots)}
-                  className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 disabled:opacity-50"
-                >
-                  <Calculator className="w-3.5 h-3.5" />
-                  <span>{recalcBusy ? "計算中..." : "移動時間を一括再計算"}</span>
-                </button>
-              ) : (
-                <div />
-              )}
-              <button
-                type="button"
-                onClick={() => setShowDepartureModal(false)}
-                className="px-5 py-2 rounded-xl bg-slate-900 text-white text-xs font-extrabold hover:bg-slate-800"
-              >
-                完了
-              </button>
-            </div>
-          </div>
-        </div>
+        <DepartureSettingsModal
+          day={activeDay}
+          daySpotsCount={daySpots.length}
+          checkoutSpot={daySchedule?.checkoutSpot ?? null}
+          recalcBusy={recalcBusy}
+          onSaveDay={handleSaveDayPatch}
+          onRecalcRoutes={(overrideDay) =>
+            recalculateDayRoutes(overrideDay ?? activeDay, daySpots)
+          }
+          onClose={() => setShowDepartureModal(false)}
+        />
       )}
 
       {/* 右側スライドメニュー（サイドバー：共有・Muse出力・ホーム移動をここに収納） */}
