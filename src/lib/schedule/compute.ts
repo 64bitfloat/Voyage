@@ -225,6 +225,21 @@ export function computeDaySchedule(
     }
 
     if (cursor === null) {
+      const bh = deserializeBusinessHours(s.transport_note);
+      if (bh.targetTime && day.date) {
+        const targetMs = Date.parse(combineDateTime(day.date, bh.targetTime));
+        const departureMs = targetMs + s.stay_minutes * MIN;
+        timings[s.id] = {
+          arrival: toTokyoISO(new Date(targetMs)),
+          departure: toTokyoISO(new Date(departureMs)),
+          wait_minutes: 0,
+          overrun_minutes: 0,
+          travel_unknown: travel === null,
+          ...deadline,
+        };
+        cursor = departureMs;
+        continue;
+      }
       timings[s.id] = {
         arrival: null,
         departure: null,
