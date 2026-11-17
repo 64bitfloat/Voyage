@@ -116,12 +116,13 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit, onEditL
   const hasBhInfo = Boolean(bhRule.open && bhRule.close) || bhRule.closedDays.length > 0;
 
   const effectiveMode = spot.transport_mode ?? "car";
+  const isTargetTime = !spot.is_fixed && Boolean(bhRule.targetTime);
 
   return (
     <div ref={setNodeRef} style={style} className={isDragging ? "opacity-60 z-20" : ""}>
       {/* Voyage風・前の地点からの移動コネクタピル（タップで移動区間を編集） */}
       {(spot.day_index >= 1 || spot.transport_mode) && (
-        <div className="grid grid-cols-[54px_20px_1fr] items-center py-1">
+        <div className="grid grid-cols-[58px_20px_1fr] items-center py-1">
           <div />
           <div className="flex justify-center h-full">
             <div className="w-0.5 h-7 border-l-2 border-dashed border-slate-300" />
@@ -182,9 +183,9 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit, onEditL
       )}
 
       {/* クロノグラフ・タイムライン行（左: 時刻軸 / 中: ピン番号ノード / 右: リッチカード） */}
-      <div className="grid grid-cols-[54px_20px_1fr] items-stretch gap-x-1">
+      <div className="grid grid-cols-[58px_20px_1fr] items-stretch gap-x-1">
         {/* 左カラム: 到着・出発予定時刻 */}
-        <div className="flex flex-col justify-between py-2.5 pr-1 text-right font-mono">
+        <div className="flex flex-col justify-between py-2.5 pr-1 text-right font-mono whitespace-nowrap">
           {timing?.arrival ? (
             <>
               <span
@@ -193,10 +194,12 @@ export default function SpotCard({ index, spot, dayDate, timing, onEdit, onEditL
                 }`}
               >
                 {toTokyoHHMM(timing.arrival)}
+                {isTargetTime ? "頃" : ""}
               </span>
               {timing.departure && timing.departure !== timing.arrival && (
                 <span className="text-[10px] text-slate-400 font-medium">
                   {toTokyoHHMM(timing.departure)}
+                  {isTargetTime ? "頃" : ""}
                 </span>
               )}
             </>
