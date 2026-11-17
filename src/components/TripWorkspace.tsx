@@ -57,6 +57,7 @@ import { autoBuildEfficientItinerary } from "@/lib/schedule/auto-planner";
 import { useTripSync } from "@/lib/realtime/sync";
 import { estimateRouteFallback, getRouteProvider, type LatLng } from "@/lib/routing";
 import { deserializeBusinessHours, parseOsmOpeningHours, serializeBusinessHours } from "@/lib/geo/business-hours";
+import { geocodeSpot } from "@/lib/geo/geocode";
 import { toTokyoDate, toTokyoHHMM } from "@/lib/datetime";
 import type { PendingPin } from "./TripMap";
 import SpotCard from "./SpotCard";
@@ -316,18 +317,15 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               ? { lat: ordered[i - 1].lat!, lng: ordered[i - 1].lng! }
               : null;
 
-        if (
-          prev &&
-          s.lat !== null &&
-          s.lng !== null &&
-          (s.transport_mode === "car" || s.transport_mode === "walk" || s.transport_mode === "train")
-        ) {
+        const isRoutable =
+          s.transport_mode === "car" || s.transport_mode === "walk" || s.transport_mode === "train";
+        if (prev && s.lat !== null && s.lng !== null && isRoutable) {
           const avoidTolls =
             s.transport_mode === "car" && Boolean(deserializeBusinessHours(s.transport_note).avoidTolls);
           const est = estimateRouteFallback(
             prev,
             { lat: s.lat, lng: s.lng },
-            s.transport_mode,
+            s.transport_mode as "car" | "walk" | "train",
             avoidTolls,
           );
           return {
@@ -335,6 +333,15 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             sort_order: i,
             transport_duration_minutes: est.duration_minutes,
             transport_distance_m: est.distance_m,
+          };
+        }
+        if (isRoutable) {
+          // 座標未確定の区間は前の並び順の古い距離を残さない
+          return {
+            ...s,
+            sort_order: i,
+            transport_duration_minutes: null,
+            transport_distance_m: null,
           };
         }
         return { ...s, sort_order: i };
@@ -345,31 +352,41 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         spots: [...prev.spots.filter((x) => x.day_index !== day.day_index), ...instant],
       }));
 
-      // 2. 続いてルートAPIで精密な移動時間・距離（失敗時は概算フォールバック）を取得して保存
+      // 2. 続いて座標未設定スポットを補完しつつ、ルートAPIで精密な移動時間・距離を取得して保存
       const updated: SpotRow[] = [];
       for (let i = 0; i < instant.length; i++) {
-        const s = instant[i];
+        let s = instant[i];
+        let latLngPatched = false;
+        if ((s.lat === null || s.lng === null) && (s.address?.trim() || s.name.trim())) {
+          try {
+            const geo = await geocodeSpot(s.address, s.name);
+            if (geo) {
+              s = { ...s, lat: geo.lat, lng: geo.lng };
+              latLngPatched = true;
+            }
+          } catch {
+            // 座標取得失敗時はスキップ
+          }
+        }
+
         const prev: LatLng | null =
           i === 0
             ? depLat !== null && depLng !== null
               ? { lat: depLat, lng: depLng }
               : null
-            : instant[i - 1].lat !== null && instant[i - 1].lng !== null
-              ? { lat: instant[i - 1].lat!, lng: instant[i - 1].lng! }
+            : updated[i - 1].lat !== null && updated[i - 1].lng !== null
+              ? { lat: updated[i - 1].lat!, lng: updated[i - 1].lng! }
               : null;
 
-        if (
-          prev &&
-          s.lat !== null &&
-          s.lng !== null &&
-          (s.transport_mode === "car" || s.transport_mode === "walk" || s.transport_mode === "train")
-        ) {
+        const isRoutable =
+          s.transport_mode === "car" || s.transport_mode === "walk" || s.transport_mode === "train";
+        if (prev && s.lat !== null && s.lng !== null && isRoutable) {
           const avoidTolls =
             s.transport_mode === "car" && Boolean(deserializeBusinessHours(s.transport_note).avoidTolls);
           const r = await getRouteProvider().route(
             prev,
             { lat: s.lat, lng: s.lng },
-            s.transport_mode,
+            s.transport_mode as "car" | "walk" | "train",
             { avoidTolls },
           );
           const nextSpot: SpotRow = {
@@ -383,12 +400,28 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              ...(latLngPatched ? { lat: s.lat, lng: s.lng } : {}),
               transport_duration_minutes: r.duration_minutes,
               transport_distance_m: r.distance_m,
             }),
           });
         } else {
           updated.push(s);
+          const hadStale =
+            isRoutable &&
+            (ordered[i].transport_duration_minutes !== null || ordered[i].transport_distance_m !== null);
+          if (latLngPatched || hadStale) {
+            await fetch(`/api/trips/${tripId}/spots/${s.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...(latLngPatched ? { lat: s.lat, lng: s.lng } : {}),
+                ...(hadStale
+                  ? { transport_duration_minutes: null, transport_distance_m: null }
+                  : {}),
+              }),
+            });
+          }
         }
       }
 

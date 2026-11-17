@@ -15,6 +15,7 @@ import type { DayRow, SpotRow } from "@/lib/model/types";
 import { combineDateTime, toTokyoDate, toTokyoHHMM, toTokyoISO } from "@/lib/datetime";
 import { addDays } from "@/lib/model/types";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
+import { geocodeSpot } from "@/lib/geo/geocode";
 import {
   buildDefaultSlotPresets,
   checkBusinessHoursAlert,
@@ -312,8 +313,8 @@ export default function SpotEditorModal({
 
   const canAutoRoute =
     prevCoords !== null &&
-    spot.lat !== null &&
-    spot.lng !== null &&
+    ((spot.lat !== null && spot.lng !== null) ||
+      Boolean(spot.address?.trim() || spot.name.trim())) &&
     (spot.transport_mode === "car" ||
       spot.transport_mode === "walk" ||
       spot.transport_mode === "train");
@@ -428,13 +429,32 @@ export default function SpotEditorModal({
           ? "train"
           : "car");
     const avoidTolls = avoidTollsOverride ?? Boolean(bhRule.avoidTolls);
-    if (!prevCoords || spot.lat === null || spot.lng === null) return;
+    if (!prevCoords) return;
     setCalcBusy(true);
     setCalcErr(null);
     try {
-      const r = await getRouteProvider().route(prevCoords, { lat: spot.lat, lng: spot.lng }, mode, {
-        avoidTolls,
-      });
+      let targetLat = spot.lat;
+      let targetLng = spot.lng;
+      if (targetLat === null || targetLng === null) {
+        const geo = await geocodeSpot(spot.address, spot.name);
+        if (!geo) {
+          setCalcErr("スポットの座標を取得できませんでした。住所やGoogleマップリンクを確認してください。");
+          return;
+        }
+        targetLat = geo.lat;
+        targetLng = geo.lng;
+        setSpot((prev) => ({
+          ...prev,
+          lat: geo.lat,
+          lng: geo.lng,
+        }));
+      }
+      const r = await getRouteProvider().route(
+        prevCoords,
+        { lat: targetLat, lng: targetLng },
+        mode,
+        { avoidTolls },
+      );
       setSpot((prev) => ({
         ...prev,
         transport_mode: mode,
@@ -479,8 +499,24 @@ export default function SpotEditorModal({
           ? combineDateTime(checkOutDate, checkOutHHMM)
           : null;
 
+      let resolvedLat = spot.lat;
+      let resolvedLng = spot.lng;
+      if ((resolvedLat === null || resolvedLng === null) && (spot.address?.trim() || spot.name.trim())) {
+        try {
+          const geo = await geocodeSpot(spot.address, spot.name);
+          if (geo) {
+            resolvedLat = geo.lat;
+            resolvedLng = geo.lng;
+          }
+        } catch {
+          // 座標補完失敗時はそのまま保存
+        }
+      }
+
       await onSave({
         ...spot,
+        lat: resolvedLat,
+        lng: resolvedLng,
         is_fixed: Boolean(spot.is_fixed && hasTargetTime && resTimeHHMM),
         name: spot.name.trim(),
         place_url: gmapUrl.trim() ? gmapUrl.trim() : spot.place_url,
