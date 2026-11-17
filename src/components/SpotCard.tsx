@@ -16,6 +16,11 @@ import {
 import type { SpotRow } from "@/lib/model/types";
 import type { SpotTiming } from "@/lib/schedule/compute";
 import { toTokyoHHMM } from "@/lib/datetime";
+import {
+  checkBusinessHoursAlert,
+  dayNumberToJa,
+  deserializeBusinessHours,
+} from "@/lib/geo/business-hours";
 
 const CATEGORY_STYLE: Record<
   SpotRow["category"],
@@ -68,11 +73,12 @@ function ModeIcon({ mode }: { mode: SpotRow["transport_mode"] }) {
 interface SpotCardProps {
   index: number;
   spot: SpotRow;
+  dayDate: string | null;
   timing: SpotTiming | undefined;
   onEdit: (spot: SpotRow) => void;
 }
 
-export default function SpotCard({ index, spot, timing, onEdit }: SpotCardProps) {
+export default function SpotCard({ index, spot, dayDate, timing, onEdit }: SpotCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: spot.id,
   });
@@ -85,6 +91,14 @@ export default function SpotCard({ index, spot, timing, onEdit }: SpotCardProps)
   const cat = CATEGORY_STYLE[spot.category];
   const st = STATUS_BADGE[spot.status];
   const overrun = timing?.overrun_minutes ?? 0;
+  const bhRule = deserializeBusinessHours(spot.transport_note);
+  const bhAlert = checkBusinessHoursAlert(
+    bhRule,
+    dayDate,
+    timing?.arrival ? toTokyoHHMM(timing.arrival) : null,
+    timing?.departure ? toTokyoHHMM(timing.departure) : null,
+  );
+  const hasBhInfo = Boolean(bhRule.open && bhRule.close) || bhRule.closedDays.length > 0;
 
   return (
     <div ref={setNodeRef} style={style} className={isDragging ? "opacity-60 z-20" : ""}>
@@ -159,7 +173,9 @@ export default function SpotCard({ index, spot, timing, onEdit }: SpotCardProps)
             className={`rounded-2xl border p-3 bg-white shadow-xs transition flex items-start gap-2 ${
               overrun > 0
                 ? "border-red-400 ring-2 ring-red-100 bg-red-50/20"
-                : "border-slate-200/90 hover:border-slate-300"
+                : bhAlert
+                  ? "border-amber-400 ring-2 ring-amber-100 bg-amber-50/20"
+                  : "border-slate-200/90 hover:border-slate-300"
             }`}
           >
             <button
@@ -172,6 +188,14 @@ export default function SpotCard({ index, spot, timing, onEdit }: SpotCardProps)
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-red-600 text-white text-xs font-bold shadow-xs">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                   <span>⚠️ 移動が間に合いません：{overrun}分超過</span>
+                </div>
+              )}
+
+              {/* 営業時間外・定休日アラートバッジ */}
+              {bhAlert && (
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-600 text-white text-xs font-bold shadow-xs">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{bhAlert}</span>
                 </div>
               )}
 
@@ -199,6 +223,16 @@ export default function SpotCard({ index, spot, timing, onEdit }: SpotCardProps)
                 {spot.is_fixed && spot.reservation_time && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                     予約 {toTokyoHHMM(spot.reservation_time)} 固定
+                  </span>
+                )}
+                {hasBhInfo && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600">
+                    {bhRule.open && bhRule.close ? `営 ${bhRule.open}-${bhRule.close}` : ""}
+                    {bhRule.closedDays.length > 0
+                      ? `${bhRule.open ? " / " : ""}休:${bhRule.closedDays
+                          .map((d) => dayNumberToJa(d))
+                          .join("")}`
+                      : ""}
                   </span>
                 )}
               </div>

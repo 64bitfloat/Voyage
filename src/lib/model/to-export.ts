@@ -93,7 +93,7 @@ export function buildExportFromDoc(doc: TripDoc, now: Date = new Date()): Voyage
                     mode: s.transport_mode,
                     duration_minutes: s.transport_duration_minutes,
                     distance_m: s.transport_distance_m,
-                    note: s.transport_note,
+                    note: s.transport_note.startsWith('{"bh":1') ? "" : s.transport_note,
                   }
                 : null,
               photos: spotPhotos.map((ph) => ({

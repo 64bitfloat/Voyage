@@ -82,6 +82,7 @@ export interface PendingPin {
   lng: number;
   name: string;
   address: string;
+  opening_hours?: string | null;
 }
 
 interface TripMapProps {
@@ -121,7 +122,13 @@ export default function TripMap({ day, spots, onPickPlace, onSelectSpot }: TripM
       const r = await searchPlaces(query);
       setResults(r);
       if (r[0]) {
-        const p = { lat: r[0].lat, lng: r[0].lng, name: r[0].name, address: r[0].address };
+        const p = {
+          lat: r[0].lat,
+          lng: r[0].lng,
+          name: r[0].name,
+          address: r[0].address,
+          opening_hours: r[0].opening_hours ?? null,
+        };
         setPending(p);
         setFlyTarget({ lat: p.lat, lng: p.lng });
       }
@@ -148,6 +155,7 @@ export default function TripMap({ day, spots, onPickPlace, onSelectSpot }: TripM
         lng: roundedLng,
         name: rev.name || "選択した地点",
         address: rev.address,
+        opening_hours: rev.opening_hours ?? null,
       });
     }
   }
@@ -193,7 +201,13 @@ export default function TripMap({ day, spots, onPickPlace, onSelectSpot }: TripM
                 key={idx}
                 type="button"
                 onClick={() => {
-                  const p = { lat: r.lat, lng: r.lng, name: r.name, address: r.address };
+                  const p = {
+                    lat: r.lat,
+                    lng: r.lng,
+                    name: r.name,
+                    address: r.address,
+                    opening_hours: r.opening_hours ?? null,
+                  };
                   setPending(p);
                   setFlyTarget({ lat: r.lat, lng: r.lng });
                   setResults([]);

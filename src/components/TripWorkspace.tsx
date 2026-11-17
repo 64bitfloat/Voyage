@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import {
   DndContext,
   PointerSensor,
@@ -32,6 +33,10 @@ import {
   Users,
   BedDouble,
   ListOrdered,
+  Menu,
+  X,
+  Home,
+  Link2,
 } from "lucide-react";
 import {
   addDays,
@@ -50,6 +55,7 @@ import { computeTripSchedule, spotsOfDay } from "@/lib/schedule/compute";
 import { useTripSync } from "@/lib/realtime/sync";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
 import { searchPlaces } from "@/lib/geo/geocode";
+import { parseOsmOpeningHours, serializeBusinessHours } from "@/lib/geo/business-hours";
 import { toTokyoHHMM } from "@/lib/datetime";
 import type { PendingPin } from "./TripMap";
 import SpotCard from "./SpotCard";
@@ -180,6 +186,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   const [editingSpot, setEditingSpot] = useState<{ spot: SpotRow; isNew: boolean } | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [depGeoBusy, setDepGeoBusy] = useState(false);
   const [unlocked, setUnlocked] = useState<boolean>(() => {
@@ -451,6 +458,9 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   }
 
   function openNewSpotModal(pin?: PendingPin) {
+    const bhNote = pin?.opening_hours
+      ? serializeBusinessHours(parseOsmOpeningHours(pin.opening_hours))
+      : "";
     const draft = newSpot({
       id: crypto.randomUUID(),
       day_index: activeDay.day_index,
@@ -461,6 +471,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       lng: pin?.lng ?? null,
       place_url: pin ? `https://maps.google.com/?q=${pin.lat},${pin.lng}` : null,
       transport_mode: "car",
+      transport_note: bhNote,
     });
     setEditingSpot({ spot: draft, isNew: true });
   }
@@ -687,26 +698,16 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           </div>
         </div>
 
-        {/* 右上アクション（しおり共有モーダル + 第5.1章「Muse連携用データを出力」ボタン） */}
+        {/* 右上アクション（しおり共有・Muse出力などはサイドバーメニューに集約してスッキリ表示） */}
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
-            onClick={() => setShowShareModal(true)}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-2xs cursor-pointer"
-            title="現在のしおりデータを含めた共有リンクを表示します"
+            onClick={() => setShowSidebar(true)}
+            className="p-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 shadow-2xs cursor-pointer"
+            aria-label="メニューを開く"
+            title="共有・Muse出力・メニュー"
           >
-            <Share2 className="w-3.5 h-3.5 text-blue-600" />
-            <span>しおりを共有</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowExportModal(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white text-xs font-extrabold shadow-sm hover:from-indigo-700 hover:to-blue-700 cursor-pointer"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Muse連携用データを出力</span>
-            <span className="sm:hidden">Muse出力</span>
+            <Menu className="w-5 h-5" />
           </button>
         </div>
       </header>
@@ -957,6 +958,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                       key={spot.id}
                       index={idx}
                       spot={spot}
+                      dayDate={activeDay.date}
                       timing={daySchedule?.timings[spot.id]}
                       onEdit={(s) => setEditingSpot({ spot: s, isNew: false })}
                     />
@@ -1139,6 +1141,110 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       {/* しおり共有モーダル */}
       {showShareModal && (
         <ShareTripModal doc={doc} onClose={() => setShowShareModal(false)} />
+      )}
+
+      {/* 右側スライドメニュー（サイドバー：共有・Muse出力・ホーム移動をここに収納） */}
+      {showSidebar && (
+        <div
+          className="fixed inset-0 z-[2400] bg-slate-900/50 backdrop-blur-xs flex justify-end"
+          onClick={() => setShowSidebar(false)}
+        >
+          <aside
+            className="w-72 max-w-[82vw] h-full bg-white shadow-2xl border-l border-slate-200 p-4 flex flex-col justify-between"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <div>
+                  <div className="text-xs font-extrabold text-slate-900 truncate max-w-[180px]">
+                    {doc.trip.title || "旅行しおり"}
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono truncate max-w-[180px]">
+                    ID: {doc.trip.id}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSidebar(false)}
+                  className="p-1.5 rounded-xl text-slate-500 hover:bg-slate-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSidebar(false);
+                    setShowShareModal(true);
+                  }}
+                  className="w-full px-3.5 py-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-blue-50/70 text-left flex items-center gap-3 transition"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
+                    <Share2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-900">しおりを友人に共有</div>
+                    <div className="text-[10px] text-slate-500">URL・部屋IDをコピーして招待</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSidebar(false);
+                    setShowExportModal(true);
+                  }}
+                  className="w-full px-3.5 py-3 rounded-2xl border border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100/70 text-left flex items-center gap-3 transition"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-extrabold text-indigo-950">
+                      Muse連携用データを出力
+                    </div>
+                    <div className="text-[10px] text-indigo-700">
+                      JSON・Markdown・サマリーURL
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSidebar(false);
+                    openNewSpotModal();
+                  }}
+                  className="w-full px-3.5 py-3 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-left flex items-center gap-3 transition"
+                >
+                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                    <Link2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-900">
+                      GoogleマップURLから追加
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      リンク貼り付けで営業時間も取得
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 pt-3">
+              <Link
+                href="/"
+                className="w-full px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 flex items-center gap-2"
+              >
+                <Home className="w-4 h-4" />
+                <span>トップ画面（しおり一覧）へ戻る</span>
+              </Link>
+            </div>
+          </aside>
+        </div>
       )}
     </div>
   );

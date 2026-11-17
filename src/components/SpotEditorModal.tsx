@@ -1,11 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { X, Calculator, Star } from "lucide-react";
+import { X, Calculator, Star, Link2, Sparkles, Clock } from "lucide-react";
 import type { SpotRow } from "@/lib/model/types";
 import { combineDateTime, toTokyoDate, toTokyoHHMM } from "@/lib/datetime";
 import { addDays } from "@/lib/model/types";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
+import {
+  dayNumberToJa,
+  deserializeBusinessHours,
+  serializeBusinessHours,
+  type BusinessHoursRule,
+} from "@/lib/geo/business-hours";
 
 interface SpotEditorModalProps {
   dayIndex: number;
@@ -52,6 +58,14 @@ export default function SpotEditorModal({
   const todayStr = toTokyoDate(new Date());
   const baseDefaultDate = dayDate ?? todayStr;
   const [spot, setSpot] = useState<SpotRow>(initial);
+  const [gmapUrl, setGmapUrl] = useState(initial.place_url ?? "");
+  const [resolvingUrl, setResolvingUrl] = useState(false);
+  const [resolveMsg, setResolveMsg] = useState<string | null>(null);
+
+  const [bhRule, setBhRule] = useState<BusinessHoursRule>(() =>
+    deserializeBusinessHours(initial.transport_note),
+  );
+
   const [resTimeHHMM, setResTimeHHMM] = useState<string>(
     initial.reservation_time ? toTokyoHHMM(initial.reservation_time) : "12:00",
   );
@@ -82,6 +96,83 @@ export default function SpotEditorModal({
     spot.lng !== null &&
     (spot.transport_mode === "car" || spot.transport_mode === "walk");
 
+  async function handleResolveGoogleMapUrl() {
+    if (!gmapUrl.trim()) return;
+    setResolvingUrl(true);
+    setResolveMsg(null);
+    try {
+      const res = await fetch("/api/places/resolve-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: gmapUrl.trim() }),
+      });
+      const data = (await res.json()) as {
+        name?: string;
+        address?: string | null;
+        lat?: number | null;
+        lng?: number | null;
+        place_url?: string;
+        business_hours?: BusinessHoursRule;
+        error?: string;
+      };
+      if (!res.ok) {
+        setResolveMsg(data.error ?? "リンクの解析に失敗しました");
+        return;
+      }
+
+      setSpot((prev) => ({
+        ...prev,
+        name: data.name || prev.name,
+        address: data.address ?? prev.address,
+        lat: data.lat ?? prev.lat,
+        lng: data.lng ?? prev.lng,
+        place_url: data.place_url ?? gmapUrl.trim(),
+      }));
+
+      if (data.business_hours) {
+        setBhRule(data.business_hours);
+      }
+
+      // 座標が取れたら前の地点からの移動時間も自動算出を試みる
+      if (
+        prevCoords &&
+        data.lat !== null &&
+        data.lat !== undefined &&
+        data.lng !== null &&
+        data.lng !== undefined &&
+        (spot.transport_mode === "car" || spot.transport_mode === "walk")
+      ) {
+        try {
+          const r = await getRouteProvider().route(
+            prevCoords,
+            { lat: data.lat, lng: data.lng },
+            spot.transport_mode,
+          );
+          setSpot((prev) => ({
+            ...prev,
+            transport_duration_minutes: r.duration_minutes,
+            transport_distance_m: r.distance_m,
+          }));
+        } catch {
+          // ignore
+        }
+      }
+
+      const hasHours =
+        data.business_hours?.open ||
+        (data.business_hours?.closedDays && data.business_hours.closedDays.length > 0);
+      setResolveMsg(
+        hasHours
+          ? "✅ 場所情報と営業時間・定休日を自動取得しました！"
+          : "✅ 場所情報を取得しました（営業時間データがない場合は下で設定できます）",
+      );
+    } catch {
+      setResolveMsg("通信エラーが発生しました");
+    } finally {
+      setResolvingUrl(false);
+    }
+  }
+
   async function handleAutoRoute(modeOverride?: "car" | "walk") {
     const mode = modeOverride ?? (spot.transport_mode === "walk" ? "walk" : "car");
     if (!prevCoords || spot.lat === null || spot.lng === null) return;
@@ -100,6 +191,16 @@ export default function SpotEditorModal({
     } finally {
       setCalcBusy(false);
     }
+  }
+
+  function toggleClosedDay(dow: number) {
+    setBhRule((prev) => {
+      const exists = prev.closedDays.includes(dow);
+      const next = exists
+        ? prev.closedDays.filter((d) => d !== dow)
+        : [...prev.closedDays, dow].sort();
+      return { ...prev, closedDays: next };
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -122,6 +223,8 @@ export default function SpotEditorModal({
       await onSave({
         ...spot,
         name: spot.name.trim(),
+        place_url: gmapUrl.trim() ? gmapUrl.trim() : spot.place_url,
+        transport_note: serializeBusinessHours(bhRule),
         reservation_time,
         check_in,
         check_out,
@@ -134,7 +237,7 @@ export default function SpotEditorModal({
 
   return (
     <div className="fixed inset-0 z-[2000] bg-black/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-white text-neutral-900 w-full max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-white text-neutral-900 w-full max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[92vh] flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200">
           <h2 className="text-base font-bold">{isNew ? "スポットを追加" : "スポットを編集"}</h2>
           <button
@@ -147,6 +250,35 @@ export default function SpotEditorModal({
         </div>
 
         <form onSubmit={handleSubmit} className="overflow-y-auto p-4 space-y-4 text-sm">
+          {/* Google マップ URL 貼り付け自動入力ボックス */}
+          <div className="rounded-2xl bg-blue-50/70 border border-blue-200 p-3 space-y-2">
+            <label className="text-xs font-extrabold text-blue-950 flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5 text-blue-600" />
+              <span>Google マップの共有リンクを貼り付けて自動入力</span>
+            </label>
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                value={gmapUrl}
+                onChange={(e) => setGmapUrl(e.target.value)}
+                placeholder="https://maps.app.goo.gl/... または GoogleマップURL"
+                className="flex-1 px-3 py-1.5 rounded-xl border border-blue-200 bg-white text-xs"
+              />
+              <button
+                type="button"
+                disabled={resolvingUrl || !gmapUrl.trim()}
+                onClick={handleResolveGoogleMapUrl}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 disabled:opacity-50 shrink-0"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{resolvingUrl ? "解析中..." : "自動取得"}</span>
+              </button>
+            </div>
+            {resolveMsg && (
+              <p className="text-[11px] font-semibold text-blue-900">{resolveMsg}</p>
+            )}
+          </div>
+
           {/* スポット名 + メイン目的地フラグ */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
@@ -308,6 +440,71 @@ export default function SpotEditorModal({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* 営業時間・定休日（自動取得＋手動調整、予定時刻が範囲外ならアラート表示） */}
+          {spot.category !== "lodging" && (
+            <div className="rounded-xl bg-amber-50/60 border border-amber-200 p-3 space-y-2.5">
+              <div className="flex items-center justify-between flex-wrap gap-1">
+                <span className="text-xs font-bold text-amber-950 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  <span>営業時間・定休日（予定と照合して時間外・休業日アラートを表示）</span>
+                </span>
+                {bhRule.rawText && (
+                  <span className="text-[10px] font-mono bg-white px-2 py-0.5 rounded border border-amber-200 text-amber-800">
+                    自動取得: {bhRule.rawText}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] text-amber-900 mb-0.5">開店時刻</label>
+                  <input
+                    type="time"
+                    value={bhRule.open ?? ""}
+                    onChange={(e) =>
+                      setBhRule((prev) => ({ ...prev, open: e.target.value || null }))
+                    }
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-amber-900 mb-0.5">閉店時刻</label>
+                  <input
+                    type="time"
+                    value={bhRule.close ?? ""}
+                    onChange={(e) =>
+                      setBhRule((prev) => ({ ...prev, close: e.target.value || null }))
+                    }
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-amber-200 bg-white text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-amber-900 mb-1">定休日（タップで選択）</label>
+                <div className="grid grid-cols-7 gap-1">
+                  {[0, 1, 2, 3, 4, 5, 6].map((dow) => {
+                    const isClosed = bhRule.closedDays.includes(dow);
+                    return (
+                      <button
+                        key={dow}
+                        type="button"
+                        onClick={() => toggleClosedDay(dow)}
+                        className={`py-1 rounded-lg text-xs font-bold border transition ${
+                          isClosed
+                            ? "bg-red-600 text-white border-red-600"
+                            : "bg-white text-slate-600 border-amber-200 hover:bg-amber-100/50"
+                        }`}
+                      >
+                        {dayNumberToJa(dow)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
