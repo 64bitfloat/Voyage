@@ -104,6 +104,34 @@ export class SupabaseStore implements TripStore {
     if (r.error) throw r.error;
   }
 
+  async deleteDay(tripId: string, dayIndex: number) {
+    const existingSpots = await this.db
+      .from("spots")
+      .select("id")
+      .eq("trip_id", tripId)
+      .eq("day_index", dayIndex);
+    if (existingSpots.error) throw existingSpots.error;
+    if ((existingSpots.data?.length ?? 0) > 0) {
+      await this.upsertDay(tripId, {
+        day_index: 0,
+        label: "候補プール",
+        date: null,
+        departure_point: null,
+        departure_lat: null,
+        departure_lng: null,
+        departure_time: null,
+      });
+      const moved = await this.db
+        .from("spots")
+        .update({ day_index: 0 })
+        .eq("trip_id", tripId)
+        .eq("day_index", dayIndex);
+      if (moved.error) throw moved.error;
+    }
+    const r = await this.db.from("days").delete().eq("trip_id", tripId).eq("day_index", dayIndex);
+    if (r.error) throw r.error;
+  }
+
   async createSpot(tripId: string, spot: SpotRow) {
     const r = await this.db.from("spots").upsert({ ...spot, trip_id: tripId }, { onConflict: "id", ignoreDuplicates: true });
     if (r.error) throw r.error;

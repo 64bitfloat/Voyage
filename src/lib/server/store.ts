@@ -29,6 +29,7 @@ export interface TripStore {
     patch: Partial<Pick<TripRow, "title" | "start_date" | "end_date" | "notes">>,
   ): Promise<void>;
   upsertDay(tripId: string, day: DayRow): Promise<void>;
+  deleteDay(tripId: string, dayIndex: number): Promise<void>;
   createSpot(tripId: string, spot: SpotRow): Promise<void>;
   updateSpot(tripId: string, spotId: string, patch: Partial<SpotRow>): Promise<boolean>;
   deleteSpot(tripId: string, spotId: string): Promise<boolean>;

@@ -34,3 +34,27 @@ export async function PUT(req: Request, { params }: Ctx) {
     return serverError(e);
   }
 }
+
+/** 日程の削除（スポットがある場合は候補プール day_index=0 へ退避） */
+export async function DELETE(req: Request, { params }: Ctx) {
+  const { tripId, dayIndex: raw } = await params;
+  const dayIndex = Number(raw);
+  if (!isUuid(tripId) || !Number.isInteger(dayIndex) || dayIndex < 1 || dayIndex > 60) {
+    return jsonError(404, "日程が見つかりません");
+  }
+  const denied = await requireTripWriteAccess(req, tripId);
+  if (denied) return denied;
+  try {
+    const store = getStore();
+    const doc = await store.getTripDoc(tripId);
+    if (!doc) return jsonError(404, "旅行が見つかりません");
+    const scheduledDays = doc.days.filter((d) => d.day_index >= 1);
+    if (scheduledDays.length <= 1) {
+      return jsonError(422, "最後の日程は削除できません");
+    }
+    await store.deleteDay(tripId, dayIndex);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return serverError(e);
+  }
+}

@@ -72,6 +72,15 @@ export class MemoryStore implements TripStore {
     entry.doc.days.sort((a, b) => a.day_index - b.day_index);
   }
 
+  async deleteDay(tripId: string, dayIndex: number) {
+    const entry = db.get(tripId);
+    if (!entry) return;
+    entry.doc.spots = entry.doc.spots.map((s) =>
+      s.day_index === dayIndex ? { ...s, day_index: 0 } : s,
+    );
+    entry.doc.days = entry.doc.days.filter((d) => d.day_index !== dayIndex);
+  }
+
   async createSpot(tripId: string, spot: SpotRow) {
     const entry = db.get(tripId);
     if (entry && !entry.doc.spots.some((s) => s.id === spot.id)) entry.doc.spots.push(spot);

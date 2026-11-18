@@ -38,6 +38,7 @@ import {
   Pin,
   ArrowLeft,
   SlidersHorizontal,
+  Trash2,
 } from "lucide-react";
 import {
   addDays,
@@ -571,6 +572,47 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
     notifyChange();
   }
 
+  async function handleDeleteDay(dayIndex: number) {
+    const scheduledDays = doc.days.filter((d) => d.day_index >= 1);
+    if (scheduledDays.length <= 1) return;
+    const target = scheduledDays.find((d) => d.day_index === dayIndex);
+    if (!target) return;
+    const spotsOnDay = doc.spots.filter((s) => s.day_index === dayIndex);
+    const msg =
+      spotsOnDay.length > 0
+        ? `${target.label} を削除しますか？\n（登録されている ${spotsOnDay.length} 件のスポットは候補プールへ移動します）`
+        : `${target.label} を削除しますか？`;
+    if (!window.confirm(msg)) return;
+
+    const remainingDays = doc.days.filter((d) => d.day_index !== dayIndex);
+    const remainingScheduled = remainingDays
+      .filter((d) => d.day_index >= 1)
+      .sort((a, b) => a.day_index - b.day_index);
+    const fallbackDay =
+      [...remainingScheduled].reverse().find((d) => d.day_index < dayIndex) ??
+      remainingScheduled[0];
+    const lastDate = remainingScheduled[remainingScheduled.length - 1]?.date ?? doc.trip.end_date;
+
+    setDoc((prev) => ({
+      ...prev,
+      trip: { ...prev.trip, end_date: lastDate },
+      days: prev.days.filter((d) => d.day_index !== dayIndex),
+      spots: prev.spots.map((s) => (s.day_index === dayIndex ? { ...s, day_index: 0 } : s)),
+    }));
+    if (fallbackDay) {
+      setActiveDayIdx(fallbackDay.day_index);
+    }
+    await fetch(`/api/trips/${tripId}/days/${dayIndex}`, { method: "DELETE" });
+    if (lastDate && lastDate !== doc.trip.end_date) {
+      await fetch(`/api/trips/${tripId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ end_date: lastDate }),
+      });
+    }
+    notifyChange();
+  }
+
   function openNewSpotModal(pin?: PendingPin, forceDayIndex?: number) {
     const bhNote = pin?.opening_hours
       ? serializeBusinessHours(parseOsmOpeningHours(pin.opening_hours))
@@ -962,6 +1004,18 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             >
               ＋日程
             </button>
+
+            {doc.days.filter((d) => d.day_index >= 1).length >= 2 && activeDay.day_index >= 1 && (
+              <button
+                type="button"
+                onClick={() => void handleDeleteDay(activeDay.day_index)}
+                className="px-2.5 py-1.5 rounded-full text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 whitespace-nowrap shrink-0 inline-flex items-center gap-1"
+                title={`${activeDay.label}を削除`}
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>{activeDay.label}削除</span>
+              </button>
+            )}
           </div>
 
           {autoPlanMsg && (
