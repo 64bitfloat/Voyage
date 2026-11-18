@@ -14,6 +14,7 @@ import {
   BedDouble,
   Pencil,
   Navigation,
+  Target,
 } from "lucide-react";
 import type { SpotRow } from "@/lib/model/types";
 import type { SpotTiming } from "@/lib/schedule/compute";
@@ -188,10 +189,11 @@ export default function SpotCard({
             )}
             {timing?.must_leave_prev_by && (
               <span
-                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)]"
+                className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)]"
                 title={timing.leave_by_reason ?? undefined}
               >
-                🕒 前の場所を {timing.must_leave_prev_by} までに出発すればOK
+                <Clock className="w-3 h-3 shrink-0" />
+                <span>前の場所を {timing.must_leave_prev_by} までに出発すればOK</span>
               </span>
             )}
           </div>
@@ -259,7 +261,7 @@ export default function SpotCard({
               {overrun > 0 && (
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#b84242] text-white text-xs font-bold shadow-xs">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  <span>⚠️ 移動が間に合いません：{overrun}分超過</span>
+                  <span>移動が間に合いません：{overrun}分超過</span>
                 </div>
               )}
 
@@ -315,10 +317,11 @@ export default function SpotCard({
                 {(bhRule.slotTags ?? []).map((st) => (
                   <span
                     key={st.id}
-                    className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)]"
                     title={`目安時間帯: ${st.windowStart}〜${st.windowEnd}`}
                   >
-                    🎯 {st.label} ({st.windowStart}-{st.windowEnd})
+                    <Target className="w-2.5 h-2.5 shrink-0" />
+                    <span>{st.label} ({st.windowStart}-{st.windowEnd})</span>
                   </span>
                 ))}
               </div>

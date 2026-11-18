@@ -9,6 +9,8 @@ import {
   Clock,
   Calendar,
   AlertTriangle,
+  Pin,
+  Target,
 } from "lucide-react";
 import type { DayRow, SpotRow } from "@/lib/model/types";
 import { combineDateTime, toTokyoDate, toTokyoHHMM, toTokyoISO } from "@/lib/datetime";
@@ -521,13 +523,14 @@ export default function SpotEditorModal({
               <button
                 type="button"
                 onClick={() => handleSelectDay(0)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold border whitespace-nowrap transition ${
+                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold border whitespace-nowrap transition ${
                   spot.day_index === 0
                     ? "bg-[var(--theme-accent)] text-white border-[var(--theme-accent)] shadow-xs"
                     : "bg-white/80 text-slate-700 border-slate-200 hover:bg-white"
                 }`}
               >
-                📌 候補プール（日程未定）
+                <Pin className="w-3.5 h-3.5 shrink-0" />
+                <span>候補プール（日程未定）</span>
               </button>
               {days
                 .filter((d) => d.day_index >= 1)
@@ -648,8 +651,9 @@ export default function SpotEditorModal({
           {spot.category !== "lodging" && (
             <div className="rounded-2xl bg-white/70 border border-slate-200/80 p-3 space-y-2.5">
               <div>
-                <div className="text-xs font-extrabold text-slate-900">
-                  🎯 枠タグ（複数選択可・「どっちか1つ」選抜 ＆ 時間帯振り分け用）
+                <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1">
+                  <Target className="w-3.5 h-3.5 text-[var(--theme-accent-text)] shrink-0" />
+                  <span>枠タグ（複数選択可・「どっちか1つ」選抜 ＆ 時間帯振り分け用）</span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed mt-0.5">
                   例：迷っている2軒に「1日目昼食」を付けると自動編成で<strong>最適な1軒だけ</strong>が選ばれ、もう1軒は候補プールに残ります。「1日目昼食」と「1日目夕食」の両方を付けておけば<strong>ルートに合わせて昼と夜に自動振り分け</strong>されます。
@@ -882,9 +886,12 @@ export default function SpotEditorModal({
                   </div>
 
                   {liveLeaveBy && (
-                    <div className="text-[11px] font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)] rounded-lg px-2.5 py-1.5">
-                      🕒 前の地点を <strong>{liveLeaveBy.hhmm} までに</strong> 出発すれば{" "}
-                      {liveLeaveBy.reason} に間に合います
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)] rounded-lg px-2.5 py-1.5">
+                      <Clock className="w-3.5 h-3.5 shrink-0" />
+                      <span>
+                        前の地点を <strong>{liveLeaveBy.hhmm} までに</strong> 出発すれば{" "}
+                        {liveLeaveBy.reason} に間に合います
+                      </span>
                     </div>
                   )}
 
@@ -989,18 +996,21 @@ export default function SpotEditorModal({
 
               {/* 何時までに前の場所を出ればOKかの一目表示 */}
               {liveLeaveBy && (
-                <div className="text-[11px] font-bold text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
-                  🕒 前の地点を <strong>{liveLeaveBy.hhmm} までに</strong> 出発すれば{" "}
-                  {liveLeaveBy.reason} に間に合います
+                <div className="flex items-center gap-1.5 text-[11px] font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)] rounded-lg px-2.5 py-1.5">
+                  <Clock className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    前の地点を <strong>{liveLeaveBy.hhmm} までに</strong> 出発すれば{" "}
+                    {liveLeaveBy.reason} に間に合います
+                  </span>
                 </div>
               )}
 
               {/* 旅程的に無理がある場合のリアルタイム警告 */}
               {overrunMinutes > 0 && spot.is_fixed && (
-                <div className="flex items-start gap-1.5 rounded-xl bg-red-600 text-white px-3 py-2 text-xs font-bold shadow-xs">
+                <div className="flex items-start gap-1.5 rounded-xl bg-[#b84242] text-white px-3 py-2 text-xs font-bold shadow-xs">
                   <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>
-                    ⚠️ 前の予定からの移動が予約に間に合いません：{overrunMinutes}分超過（予約 {resTimeHHMM}{" "}
+                    前の予定からの移動が予約に間に合いません：{overrunMinutes}分超過（予約 {resTimeHHMM}{" "}
                     / 最短到着見込み {earliestArrivalHHMM}）
                   </span>
                 </div>

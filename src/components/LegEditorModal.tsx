@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, Calculator, ArrowRight, ExternalLink, Navigation } from "lucide-react";
+import { X, Calculator, ArrowRight, ExternalLink, Navigation, Route, Car } from "lucide-react";
 import type { SpotRow } from "@/lib/model/types";
 import { getRouteProvider, type LatLng } from "@/lib/routing";
 import { geocodeSpot } from "@/lib/geo/geocode";
@@ -189,13 +189,14 @@ export default function LegEditorModal({
                     setAvoidTolls(false);
                     if (fromCoords) void runAutoRoute("car", false);
                   }}
-                  className={`py-2 px-2 rounded-lg text-xs font-bold border transition ${
+                  className={`py-2 px-2 rounded-lg text-xs font-bold border transition inline-flex items-center justify-center gap-1.5 ${
                     !avoidTolls
                       ? "bg-[var(--theme-accent)] text-white border-[var(--theme-accent)] shadow-2xs"
                       : "bg-white/80 text-neutral-600 border-neutral-200 hover:bg-white"
                   }`}
                 >
-                  🛣️ 高速優先（有料道路可）
+                  <Route className="w-3.5 h-3.5 shrink-0" />
+                  <span>高速優先（有料道路可）</span>
                 </button>
                 <button
                   type="button"
@@ -203,13 +204,14 @@ export default function LegEditorModal({
                     setAvoidTolls(true);
                     if (fromCoords) void runAutoRoute("car", true);
                   }}
-                  className={`py-2 px-2 rounded-lg text-xs font-bold border transition ${
+                  className={`py-2 px-2 rounded-lg text-xs font-bold border transition inline-flex items-center justify-center gap-1.5 ${
                     avoidTolls
                       ? "bg-slate-800 text-white border-slate-800 shadow-2xs"
                       : "bg-white/80 text-neutral-600 border-neutral-200 hover:bg-white"
                   }`}
                 >
-                  🚗 高速回避（下道のみ）
+                  <Car className="w-3.5 h-3.5 shrink-0" />
+                  <span>高速回避（下道のみ）</span>
                 </button>
               </div>
             </div>

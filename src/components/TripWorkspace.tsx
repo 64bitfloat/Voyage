@@ -39,6 +39,8 @@ import {
   ArrowLeft,
   SlidersHorizontal,
   Trash2,
+  Clock,
+  Flag,
 } from "lucide-react";
 import {
   addDays,
@@ -1133,7 +1135,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               )}
             </div>
             <p className="text-[11px] text-slate-600 leading-relaxed">
-              行きたい場所をとりあえずここに追加し、優先度（<strong>★メイン / 決まった / 候補 / 未定</strong>）や<strong>🎯枠タグ（1日目昼食・2日目温泉など）</strong>を設定して「効率ルート自動編成」を押すと、営業時間・定休日・移動時間を考慮して各Dayへ自動配置します。
+              行きたい場所をとりあえずここに追加し、優先度（<strong>メイン / 決まった / 候補 / 未定</strong>）や<strong>枠タグ（1日目昼食・2日目温泉など）</strong>を設定して「効率ルート自動編成」を押すと、営業時間・定休日・移動時間を考慮して各Dayへ自動配置します。
             </p>
           </div>
 
@@ -1203,16 +1205,18 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                     "出発地点未設定"}
                 </span>
                 {daySchedule?.checkoutSpot && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80">
-                    🏨 宿泊連動
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80">
+                    <BedDouble className="w-3 h-3 shrink-0" />
+                    <span>宿泊連動</span>
                   </span>
                 )}
                 {daySpots[0] && daySchedule?.timings[daySpots[0].id]?.must_leave_prev_by && (
                   <span
-                    className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)]"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)]"
                     title={daySchedule.timings[daySpots[0].id]?.leave_by_reason ?? undefined}
                   >
-                    🕒 {daySchedule.timings[daySpots[0].id]?.must_leave_prev_by} までに出発
+                    <Clock className="w-3 h-3 shrink-0" />
+                    <span>{daySchedule.timings[daySpots[0].id]?.must_leave_prev_by} までに出発</span>
                   </span>
                 )}
               </div>
@@ -1243,8 +1247,9 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
           {reorderMode && daySpots.length >= 2 && (
             <div className="flex items-center justify-between gap-2 rounded-xl bg-[var(--theme-accent-soft)] border border-[var(--theme-accent-border)] px-3 py-2 text-xs text-[var(--theme-accent-text)]">
-              <span className="font-semibold">
-                ↕ 順番編集モード中：右側のハンドルをドラッグして並び替えできます
+              <span className="font-semibold inline-flex items-center gap-1.5">
+                <ListOrdered className="w-3.5 h-3.5 shrink-0" />
+                <span>順番編集モード中：右側のハンドルをドラッグして並び替えできます</span>
               </span>
               <button
                 type="button"
@@ -1383,8 +1388,9 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
           <div className="flex items-center justify-between pt-1 pb-6">
             {daySchedule?.end ? (
-              <span className="text-xs text-slate-500 font-mono font-bold">
-                🏁 全行程終了予定: {toTokyoHHMM(daySchedule.end)}
+              <span className="text-xs text-slate-500 font-mono font-bold inline-flex items-center gap-1.5">
+                <Flag className="w-3.5 h-3.5 shrink-0 text-[var(--theme-accent-text)]" />
+                <span>全行程終了予定: {toTokyoHHMM(daySchedule.end)}</span>
               </span>
             ) : (
               <span />
