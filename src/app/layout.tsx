@@ -3,8 +3,13 @@ import PwaRegistrar from "@/components/PwaRegistrar";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Voyage — 旅のしおり＆Muse連携",
-  description: "友人とリアルタイムで共同編集できるモバイルファーストな旅のしおり（PWA）",
+  title: "Voyage 旅のしおり",
+  description: "友人とURLでリアルタイム共同編集できる旅のしおりアプリ",
+  openGraph: {
+    title: "Voyage 旅のしおり",
+    description: "友人とURLでリアルタイム共同編集できる旅のしおりアプリ",
+    type: "website",
+  },
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
