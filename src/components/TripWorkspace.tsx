@@ -1068,23 +1068,23 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
       {/* 費用・準備・参加者ビュー表示時の上部タイトルバー（ワンタップで旅程へ戻れる） */}
       {(mainTab === "costs" || mainTab === "prep" || mainTab === "members") && (
-        <div className="bg-white px-3.5 py-2 border-b border-slate-200/80 flex items-center justify-between shrink-0 z-10">
+        <div className="liquid-glass-strong !border-x-0 !border-t-0 px-3.5 py-2 flex items-center justify-between shrink-0 z-10">
           <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
             {mainTab === "costs" && (
               <>
-                <Wallet className="w-4 h-4 text-blue-600" />
+                <Wallet className="w-4 h-4 text-[var(--theme-accent-text)]" />
                 <span>費用・精算管理（{doc.costs.length}件）</span>
               </>
             )}
             {mainTab === "prep" && (
               <>
-                <Backpack className="w-4 h-4 text-blue-600" />
+                <Backpack className="w-4 h-4 text-[var(--theme-accent-text)]" />
                 <span>準備（持ち物 {doc.belongings.length} / 料理 {doc.dishes.length}）</span>
               </>
             )}
             {mainTab === "members" && (
               <>
-                <Users className="w-4 h-4 text-blue-600" />
+                <Users className="w-4 h-4 text-[var(--theme-accent-text)]" />
                 <span>参加者・全体メモ（{doc.participants.length}名）</span>
               </>
             )}
@@ -1092,7 +1092,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           <button
             type="button"
             onClick={() => setMainTab("itinerary")}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full liquid-glass-pill hover:bg-white text-xs font-bold text-slate-700"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>旅程へ戻る</span>
@@ -1114,10 +1114,10 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         </div>
       ) : mainTab === "pool" ? (
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 max-w-3xl w-full mx-auto">
-          <div className="rounded-2xl bg-indigo-50/80 border border-indigo-200 p-3.5 space-y-2.5 shadow-2xs">
+          <div className="rounded-2xl liquid-glass p-3.5 space-y-2.5">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
-                <Pin className="w-4 h-4 text-indigo-600" />
+              <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                <Pin className="w-4 h-4 text-[var(--theme-accent-text)]" />
                 <span>候補プール（日程未定ストック：{poolSpots.length}件）</span>
               </div>
               {doc.spots.length > 0 && (
@@ -1125,27 +1125,27 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                   type="button"
                   disabled={autoPlanBusy}
                   onClick={handleAutoPlanItinerary}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-xs font-extrabold shadow-xs hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full liquid-btn-primary text-white text-xs font-extrabold disabled:opacity-50"
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>{autoPlanBusy ? "自動編成中..." : "効率ルート自動編成"}</span>
                 </button>
               )}
             </div>
-            <p className="text-[11px] text-indigo-900 leading-relaxed">
+            <p className="text-[11px] text-slate-600 leading-relaxed">
               行きたい場所をとりあえずここに追加し、優先度（<strong>★メイン / 決まった / 候補 / 未定</strong>）や<strong>🎯枠タグ（1日目昼食・2日目温泉など）</strong>を設定して「効率ルート自動編成」を押すと、営業時間・定休日・移動時間を考慮して各Dayへ自動配置します。
             </p>
           </div>
 
           {poolSpots.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-white/80 p-6 text-center space-y-3">
+            <div className="rounded-3xl liquid-glass p-6 text-center space-y-3">
               <p className="text-xs text-slate-600">
                 現在、候補プールに入っているスポットはありません。
               </p>
               <button
                 type="button"
                 onClick={() => openNewSpotModal(undefined, 0)}
-                className="inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold shadow-xs hover:bg-indigo-700"
+                className="inline-flex items-center gap-1 px-4 py-2 rounded-full liquid-btn-primary text-white text-xs font-bold"
               >
                 <Plus className="w-4 h-4" />
                 候補プールにスポットを追加
@@ -1170,7 +1170,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             <button
               type="button"
               onClick={() => openNewSpotModal(undefined, 0)}
-              className="inline-flex items-center gap-1 px-4 py-2 rounded-2xl bg-indigo-600 text-white text-xs font-extrabold shadow-sm hover:bg-indigo-700"
+              className="inline-flex items-center gap-1 px-4 py-2 rounded-full liquid-btn-primary text-white text-xs font-extrabold"
             >
               <Plus className="w-4 h-4" />
               候補プールに追加
@@ -1242,14 +1242,14 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           </div>
 
           {reorderMode && daySpots.length >= 2 && (
-            <div className="flex items-center justify-between gap-2 rounded-xl bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-900">
+            <div className="flex items-center justify-between gap-2 rounded-xl bg-[var(--theme-accent-soft)] border border-[var(--theme-accent-border)] px-3 py-2 text-xs text-[var(--theme-accent-text)]">
               <span className="font-semibold">
-                ↕ 順番編集モード中：右側の青いハンドルをドラッグして並び替えできます
+                ↕ 順番編集モード中：右側のハンドルをドラッグして並び替えできます
               </span>
               <button
                 type="button"
                 onClick={() => setReorderMode(false)}
-                className="px-2.5 py-0.5 rounded-lg bg-blue-600 text-white font-bold text-[11px] shrink-0"
+                className="px-2.5 py-0.5 rounded-lg bg-[var(--theme-accent)] text-white font-bold text-[11px] shrink-0"
               >
                 完了
               </button>
@@ -1258,21 +1258,21 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
           {/* 前日からの宿泊チェックアウト表示（日跨ぎ宿泊がある場合、チェックアウト日の先頭に自動表示） */}
           {daySchedule?.checkoutSpot && (
-            <div className="grid grid-cols-[54px_20px_1fr] items-stretch gap-x-1">
+            <div className="grid grid-cols-[58px_20px_1fr] items-stretch gap-x-1">
               <div className="flex flex-col justify-center py-2 pr-1 text-right font-mono">
-                <span className="text-xs font-extrabold text-purple-800">
+                <span className="text-xs font-extrabold text-[var(--theme-accent-text)]">
                   {daySchedule.checkoutSpot.check_out
                     ? toTokyoHHMM(daySchedule.checkoutSpot.check_out)
                     : "--:--"}
                 </span>
-                <span className="text-[10px] text-purple-500 font-bold">OUT</span>
+                <span className="text-[10px] text-slate-400 font-bold">OUT</span>
               </div>
               <div className="relative flex flex-col items-center">
-                <div className="w-0.5 flex-1 bg-purple-200" />
-                <div className="w-6 h-6 rounded-full bg-purple-600 text-white flex items-center justify-center ring-4 ring-purple-100 shadow-xs shrink-0">
+                <div className="w-0.5 flex-1 bg-slate-300/60" />
+                <div className="w-6 h-6 rounded-full bg-[var(--theme-accent)] text-white flex items-center justify-center ring-4 ring-white/70 shadow-xs shrink-0">
                   <BedDouble className="w-3.5 h-3.5" />
                 </div>
-                <div className="w-0.5 flex-1 bg-slate-200" />
+                <div className="w-0.5 flex-1 bg-slate-300/60" />
               </div>
               <div className="py-1 pl-1.5 min-w-0">
                 <button
@@ -1280,13 +1280,13 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                   onClick={() =>
                     setEditingSpot({ spot: daySchedule.checkoutSpot!, isNew: false })
                   }
-                  className="w-full text-left rounded-2xl border border-purple-200 bg-purple-50/70 p-3 shadow-2xs hover:bg-purple-50 transition space-y-1"
+                  className="w-full text-left rounded-2xl liquid-glass p-3 hover:bg-white/80 transition space-y-1"
                 >
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-600 text-white">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--theme-accent)] text-white">
                       チェックアウト
                     </span>
-                    <span className="text-[11px] font-semibold text-purple-800">
+                    <span className="text-[11px] font-semibold text-slate-500">
                       前日からの宿泊（タップで編集）
                     </span>
                   </div>
@@ -1295,7 +1295,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                   </div>
                   {daySchedule.checkoutSpot.address && (
                     <div className="flex items-center gap-1 text-xs text-slate-500 truncate">
-                      <MapPin className="w-3 h-3 shrink-0 text-purple-400" />
+                      <MapPin className="w-3 h-3 shrink-0 text-slate-400" />
                       <span className="truncate">{daySchedule.checkoutSpot.address}</span>
                     </div>
                   )}

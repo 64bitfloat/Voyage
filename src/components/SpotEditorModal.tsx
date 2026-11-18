@@ -483,9 +483,9 @@ export default function SpotEditorModal({
 
         <form onSubmit={handleSubmit} className="overflow-y-auto p-4 space-y-4 text-sm">
           {/* Google マップ URL 貼り付け自動入力ボックス */}
-          <div className="rounded-2xl bg-blue-50/70 border border-blue-200 p-3 space-y-2">
-            <label className="text-xs font-extrabold text-blue-950 flex items-center gap-1.5">
-              <Link2 className="w-3.5 h-3.5 text-blue-600" />
+          <div className="rounded-2xl bg-white/70 border border-slate-200/80 p-3 space-y-2">
+            <label className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5 text-[var(--theme-accent-text)]" />
               <span>Google マップの共有リンクを貼り付けて自動入力</span>
             </label>
             <div className="flex gap-1.5">
@@ -494,27 +494,27 @@ export default function SpotEditorModal({
                 value={gmapUrl}
                 onChange={(e) => setGmapUrl(e.target.value)}
                 placeholder="https://maps.app.goo.gl/... または share.google/..."
-                className="flex-1 px-3 py-1.5 rounded-xl border border-blue-200 bg-white text-xs"
+                className="flex-1 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs"
               />
               <button
                 type="button"
                 disabled={resolvingUrl || !gmapUrl.trim()}
                 onClick={handleResolveGoogleMapUrl}
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 disabled:opacity-50 shrink-0"
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl liquid-btn-primary text-white text-xs font-bold disabled:opacity-50 shrink-0"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>{resolvingUrl ? "解析中..." : "自動取得"}</span>
               </button>
             </div>
             {resolveMsg && (
-              <p className="text-[11px] font-semibold text-blue-900">{resolveMsg}</p>
+              <p className="text-[11px] font-semibold text-slate-700">{resolveMsg}</p>
             )}
           </div>
 
           {/* 旅程の何日目に行くか（候補プールに入れておく or Day 1 / Day 2... を変更可能） */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-neutral-700 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              <Calendar className="w-3.5 h-3.5 text-[var(--theme-accent-text)]" />
               <span>訪問する日程（日付未定なら「候補プール」に入れてあとで自動編成できます）</span>
             </label>
             <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
@@ -523,8 +523,8 @@ export default function SpotEditorModal({
                 onClick={() => handleSelectDay(0)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold border whitespace-nowrap transition ${
                   spot.day_index === 0
-                    ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
-                    : "bg-indigo-50/70 text-indigo-800 border-indigo-200 hover:bg-indigo-100"
+                    ? "bg-[var(--theme-accent)] text-white border-[var(--theme-accent)] shadow-xs"
+                    : "bg-white/80 text-slate-700 border-slate-200 hover:bg-white"
                 }`}
               >
                 📌 候補プール（日程未定）
@@ -540,8 +540,8 @@ export default function SpotEditorModal({
                       onClick={() => handleSelectDay(d.day_index)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-bold border whitespace-nowrap transition ${
                         active
-                          ? "bg-slate-900 text-white border-slate-900 shadow-xs"
-                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                          ? "bg-[var(--theme-accent)] text-white border-[var(--theme-accent)] shadow-xs"
+                          : "bg-white/80 text-slate-700 border-slate-200 hover:bg-white"
                       }`}
                     >
                       <span>{d.label}</span>
@@ -603,11 +603,11 @@ export default function SpotEditorModal({
                     className={`py-2 px-2 rounded-xl border text-center transition ${
                       active
                         ? st.value === "decided"
-                          ? "bg-emerald-600 text-white border-emerald-600 font-bold"
+                          ? "bg-[var(--theme-accent)] text-white border-[var(--theme-accent)] font-bold"
                           : st.value === "candidate"
-                            ? "bg-amber-500 text-white border-amber-500 font-bold"
-                            : "bg-neutral-700 text-white border-neutral-700 font-bold"
-                        : "bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50"
+                            ? "bg-slate-700 text-white border-slate-700 font-bold"
+                            : "bg-slate-500 text-white border-slate-500 font-bold"
+                        : "bg-white/80 text-neutral-700 border-neutral-200 hover:bg-white"
                     }`}
                   >
                     <div className="text-xs">{st.label}</div>
@@ -634,8 +634,8 @@ export default function SpotEditorModal({
                   }}
                   className={`py-1.5 px-2 rounded-lg text-xs font-medium border ${
                     spot.category === c.value
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50"
+                      ? "bg-[var(--theme-accent)] text-white border-[var(--theme-accent)]"
+                      : "bg-white/80 text-neutral-700 border-neutral-200 hover:bg-white"
                   }`}
                 >
                   {c.label}
@@ -646,12 +646,12 @@ export default function SpotEditorModal({
 
           {/* 🎯 枠タグ（複数選択可：「1日目昼食」「2日目温泉」など、同じタグの候補から1つだけ選びたい・振り分けたいとき） */}
           {spot.category !== "lodging" && (
-            <div className="rounded-2xl bg-purple-50/70 border border-purple-200 p-3 space-y-2.5">
+            <div className="rounded-2xl bg-white/70 border border-slate-200/80 p-3 space-y-2.5">
               <div>
-                <div className="text-xs font-extrabold text-purple-950">
+                <div className="text-xs font-extrabold text-slate-900">
                   🎯 枠タグ（複数選択可・「どっちか1つ」選抜 ＆ 時間帯振り分け用）
                 </div>
-                <p className="text-[11px] text-purple-800 leading-relaxed mt-0.5">
+                <p className="text-[11px] text-slate-600 leading-relaxed mt-0.5">
                   例：迷っている2軒に「1日目昼食」を付けると自動編成で<strong>最適な1軒だけ</strong>が選ばれ、もう1軒は候補プールに残ります。「1日目昼食」と「1日目夕食」の両方を付けておけば<strong>ルートに合わせて昼と夜に自動振り分け</strong>されます。
                 </p>
               </div>
@@ -667,14 +667,14 @@ export default function SpotEditorModal({
                       onClick={() => toggleSlotTag(preset)}
                       className={`px-2.5 py-1 rounded-full text-xs font-bold border transition ${
                         selected
-                          ? "bg-purple-600 text-white border-purple-600 shadow-2xs"
-                          : "bg-white text-purple-900 border-purple-200 hover:bg-purple-100/60"
+                          ? "bg-[var(--theme-accent)] text-white border-[var(--theme-accent)] shadow-2xs"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
                       }`}
                     >
                       <span>{preset.label}</span>
                       <span
                         className={`ml-1 text-[10px] font-mono ${
-                          selected ? "text-purple-100" : "text-purple-400"
+                          selected ? "text-white/80" : "text-slate-400"
                         }`}
                       >
                         ({preset.windowStart}-{preset.windowEnd})
@@ -769,16 +769,17 @@ export default function SpotEditorModal({
 
           {/* 宿泊スポット専用: 施設の規定チェックイン/アウト可能時間 ＆ 実際の予定チェックイン/アウト時刻 */}
           {spot.category === "lodging" && (
-            <div className="rounded-xl bg-purple-50 border border-purple-200 p-3 space-y-3">
+            <div className="rounded-2xl bg-white/70 border border-slate-200/80 p-3 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold text-purple-950">
+                <span className="text-xs font-extrabold text-slate-900">
                   宿泊チェックイン・アウト設定
                 </span>
-                <label className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-800">
+                <label className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--theme-accent-text)]">
                   <input
                     type="checkbox"
                     checked={hasCheckInOut}
                     onChange={(e) => setHasCheckInOut(e.target.checked)}
+                    className="accent-[var(--theme-accent)]"
                   />
                   時刻を指定する
                 </label>
@@ -786,13 +787,13 @@ export default function SpotEditorModal({
               {hasCheckInOut && (
                 <>
                   {/* 1. ホテル・キャンプ場の規定時間（最速IN / 最終OUT） */}
-                  <div className="rounded-lg bg-white/90 border border-purple-200 p-2.5 space-y-1.5">
-                    <div className="text-[11px] font-bold text-purple-900">
+                  <div className="rounded-xl bg-white/90 border border-slate-200/80 p-2.5 space-y-1.5">
+                    <div className="text-[11px] font-bold text-slate-800">
                       ① 施設側の規定時間（任意・入力すると予定時刻が範囲外のとき警告します）
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[10px] text-purple-700 mb-0.5">
+                        <label className="block text-[10px] text-slate-600 mb-0.5">
                           最速チェックイン可能（〜から）
                         </label>
                         <TimeSelect
@@ -804,11 +805,11 @@ export default function SpotEditorModal({
                               policyCheckIn: val,
                             }))
                           }
-                          className="w-full justify-between border-purple-200"
+                          className="w-full justify-between border-slate-200"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-purple-700 mb-0.5">
+                        <label className="block text-[10px] text-slate-600 mb-0.5">
                           最終チェックアウト期限（〜まで）
                         </label>
                         <TimeSelect
@@ -828,12 +829,12 @@ export default function SpotEditorModal({
 
                   {/* 2. 実際の旅程での予定チェックイン・チェックアウト */}
                   <div className="space-y-1.5">
-                    <div className="text-[11px] font-bold text-purple-950">
+                    <div className="text-[11px] font-bold text-slate-800">
                       ② 私たちの予定チェックイン・チェックアウト日時（翌日の出発時刻に自動連動）
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div>
-                        <label className="block text-[11px] font-medium text-purple-800 mb-1">
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
                           予定チェックイン
                         </label>
                         <div className="flex gap-1">
@@ -847,18 +848,18 @@ export default function SpotEditorModal({
                                 setCheckOutDate(addDays(val, 1));
                               }
                             }}
-                            className="flex-1 min-w-0 px-2 py-1.5 rounded-xl border border-purple-200 bg-white text-xs"
+                            className="flex-1 min-w-0 px-2 py-1.5 rounded-xl border border-slate-200 bg-white text-xs"
                           />
                           <TimeSelect
                             value={checkInHHMM}
                             defaultHour="15"
                             onChange={setCheckInHHMM}
-                            className="border-purple-200 shrink-0"
+                            className="border-slate-200 shrink-0"
                           />
                         </div>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-medium text-purple-800 mb-1">
+                        <label className="block text-[11px] font-medium text-slate-600 mb-1">
                           予定チェックアウト（翌日の出発時刻）
                         </label>
                         <div className="flex gap-1 items-center">
@@ -867,13 +868,13 @@ export default function SpotEditorModal({
                             min={checkInDate || undefined}
                             value={checkOutDate}
                             onChange={(e) => setCheckOutDate(e.target.value)}
-                            className="flex-1 min-w-0 px-2 py-1.5 rounded-xl border border-purple-200 bg-white text-xs"
+                            className="flex-1 min-w-0 px-2 py-1.5 rounded-xl border border-slate-200 bg-white text-xs"
                           />
                           <TimeSelect
                             value={checkOutHHMM}
                             defaultHour="10"
                             onChange={setCheckOutHHMM}
-                            className="border-purple-200 shrink-0"
+                            className="border-slate-200 shrink-0"
                           />
                         </div>
                       </div>
@@ -881,14 +882,14 @@ export default function SpotEditorModal({
                   </div>
 
                   {liveLeaveBy && (
-                    <div className="text-[11px] font-bold text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
+                    <div className="text-[11px] font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)] rounded-lg px-2.5 py-1.5">
                       🕒 前の地点を <strong>{liveLeaveBy.hhmm} までに</strong> 出発すれば{" "}
                       {liveLeaveBy.reason} に間に合います
                     </div>
                   )}
 
                   {liveBhAlert && (
-                    <div className="flex items-start gap-1.5 rounded-xl bg-amber-600 text-white px-3 py-2 text-xs font-bold shadow-xs">
+                    <div className="flex items-start gap-1.5 rounded-xl bg-[#b46b1e] text-white px-3 py-2 text-xs font-bold shadow-xs">
                       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                       <span>{liveBhAlert}</span>
                     </div>
@@ -900,14 +901,14 @@ export default function SpotEditorModal({
 
           {/* 何時ごろ行きたいか（希望到着時刻・予約時刻）＆ 滞在時間 */}
           {!(spot.category === "lodging" && hasCheckInOut) && (
-            <div className="rounded-xl bg-indigo-50/60 border border-indigo-200 p-3 space-y-2.5">
+            <div className="rounded-2xl bg-white/70 border border-slate-200/80 p-3 space-y-2.5">
               <div className="flex items-center justify-between flex-wrap gap-1">
-                <span className="text-xs font-bold text-indigo-950 flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="text-xs font-bold text-slate-900 flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-[var(--theme-accent-text)]" />
                   <span>訪問時間・滞在時間（何時ごろ行きたいか）</span>
                 </span>
                 {earliestArrivalHHMM && (
-                  <span className="text-[11px] font-mono text-indigo-800 bg-white px-2 py-0.5 rounded border border-indigo-200">
+                  <span className="text-[11px] font-mono text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
                     前の予定からの到着見込み: <strong>{earliestArrivalHHMM}</strong>
                   </span>
                 )}
@@ -916,10 +917,10 @@ export default function SpotEditorModal({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-indigo-950">
+                    <label className="text-xs font-semibold text-slate-800">
                       行きたい時刻 / 予約時刻
                     </label>
-                    <label className="inline-flex items-center gap-1 text-xs font-bold text-indigo-800 cursor-pointer">
+                    <label className="inline-flex items-center gap-1 text-xs font-bold text-[var(--theme-accent-text)] cursor-pointer">
                       <input
                         type="checkbox"
                         checked={hasTargetTime}
@@ -933,6 +934,7 @@ export default function SpotEditorModal({
                             setResTimeHHMM("12:00");
                           }
                         }}
+                        className="accent-[var(--theme-accent)]"
                       />
                       時間を指定する
                     </label>
@@ -951,10 +953,10 @@ export default function SpotEditorModal({
                         setResTimeHHMM(val);
                       }
                     }}
-                    className="w-full justify-between border-indigo-200"
+                    className="w-full justify-between border-slate-200"
                   />
                   {hasTargetTime && (
-                    <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-900 cursor-pointer pt-0.5">
+                    <label className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-700 cursor-pointer pt-0.5">
                       <input
                         type="checkbox"
                         checked={spot.is_fixed}
@@ -1124,7 +1126,7 @@ export default function SpotEditorModal({
               <button
                 type="submit"
                 disabled={saving}
-                className="px-5 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                className="px-5 py-2 rounded-full text-xs font-bold liquid-btn-primary text-white disabled:opacity-50"
               >
                 {saving ? "保存中..." : "保存"}
               </button>

@@ -141,10 +141,10 @@ export default function LegEditorModal({
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4 text-sm">
           {/* 出発 → 到着 の明示 */}
-          <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2.5 flex items-center gap-2 text-xs font-bold text-slate-800">
-            <span className="truncate max-w-[42%] text-emerald-700">{fromLabel}</span>
+          <div className="rounded-xl bg-white/75 border border-slate-200/80 px-3 py-2.5 flex items-center gap-2 text-xs font-bold text-slate-800">
+            <span className="truncate max-w-[42%] text-[var(--theme-accent-text)]">{fromLabel}</span>
             <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="truncate max-w-[48%] text-blue-700">{toSpot.name}</span>
+            <span className="truncate max-w-[48%] text-slate-900">{toSpot.name}</span>
           </div>
 
           {/* 移動手段 */}
@@ -166,8 +166,8 @@ export default function LegEditorModal({
                   }}
                   className={`py-2 rounded-lg text-xs font-bold border transition ${
                     mode === m.value
-                      ? "bg-neutral-900 text-white border-neutral-900"
-                      : "bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-50"
+                      ? "bg-[var(--theme-accent)] text-white border-[var(--theme-accent)]"
+                      : "bg-white/80 text-neutral-700 border-neutral-200 hover:bg-white"
                   }`}
                 >
                   {m.label}
@@ -191,8 +191,8 @@ export default function LegEditorModal({
                   }}
                   className={`py-2 px-2 rounded-lg text-xs font-bold border transition ${
                     !avoidTolls
-                      ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
-                      : "bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50"
+                      ? "bg-[var(--theme-accent)] text-white border-[var(--theme-accent)] shadow-2xs"
+                      : "bg-white/80 text-neutral-600 border-neutral-200 hover:bg-white"
                   }`}
                 >
                   🛣️ 高速優先（有料道路可）
@@ -205,8 +205,8 @@ export default function LegEditorModal({
                   }}
                   className={`py-2 px-2 rounded-lg text-xs font-bold border transition ${
                     avoidTolls
-                      ? "bg-amber-600 text-white border-amber-600 shadow-2xs"
-                      : "bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50"
+                      ? "bg-slate-800 text-white border-slate-800 shadow-2xs"
+                      : "bg-white/80 text-neutral-600 border-neutral-200 hover:bg-white"
                   }`}
                 >
                   🚗 高速回避（下道のみ）
@@ -222,7 +222,7 @@ export default function LegEditorModal({
                 type="button"
                 disabled={calcBusy}
                 onClick={() => void runAutoRoute(mode, avoidTolls)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full liquid-btn-primary text-white text-xs font-bold disabled:opacity-50"
               >
                 <Calculator className="w-3.5 h-3.5" />
                 {calcBusy ? "計算中..." : "前後地点から自動計算"}
@@ -287,7 +287,7 @@ export default function LegEditorModal({
             <button
               type="submit"
               disabled={saving || calcBusy}
-              className="px-4 py-2 rounded-lg text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+              className="px-4 py-2 rounded-full text-xs font-bold liquid-btn-primary text-white disabled:opacity-50"
             >
               {saving ? "保存中..." : "この区間の移動を保存"}
             </button>
