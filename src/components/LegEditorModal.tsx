@@ -123,8 +123,8 @@ export default function LegEditorModal({
       : null;
 
   return (
-    <div className="fixed inset-0 z-[2000] bg-black/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-white text-neutral-900 w-full max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-[2000] bg-slate-900/35 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="liquid-glass-strong text-neutral-900 w-full max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-200">
           <h2 className="text-base font-bold flex items-center gap-1.5">
             <Navigation className="w-4 h-4 text-blue-600" />

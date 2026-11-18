@@ -89,8 +89,8 @@ export default function ShareTripModal({ doc, onClose }: ShareTripModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-[2600] bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="bg-white text-slate-900 w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-4">
+    <div className="fixed inset-0 z-[2600] bg-slate-900/35 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="liquid-glass-strong text-slate-900 w-full max-w-md rounded-t-3xl sm:rounded-3xl p-5 space-y-4">
         <div className="flex items-center justify-between border-b border-slate-200 pb-3">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center">

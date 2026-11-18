@@ -50,8 +50,8 @@ export default function PasscodeGateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[3000] bg-slate-900/65 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-sm p-6 space-y-5 text-center">
+    <div className="fixed inset-0 z-[3000] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="liquid-glass-strong rounded-3xl w-full max-w-sm p-6 space-y-5 text-center">
         <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
           <Lock className="w-6 h-6" />
         </div>

@@ -148,9 +148,9 @@ export default function SpotCard({
                 onEditLeg?.(spot);
               }}
               title="この区間の移動手段・高速設定を編集"
-              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white border border-slate-200/90 shadow-2xs text-[11px] font-semibold text-slate-700 ${
+              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full liquid-glass-pill text-[11px] font-semibold text-slate-700 ${
                 onEditLeg
-                  ? "hover:border-blue-400 hover:bg-blue-50/50 active:scale-[0.98] transition cursor-pointer"
+                  ? "hover:border-blue-300 hover:bg-white/85 active:scale-[0.98] transition cursor-pointer"
                   : ""
               }`}
             >
@@ -235,12 +235,12 @@ export default function SpotCard({
         {/* 右カラム: スポットカード本体 */}
         <div className="py-1 pl-1.5 min-w-0">
           <div
-            className={`rounded-2xl border p-3 bg-white shadow-xs transition flex items-start gap-2 ${
+            className={`rounded-2xl p-3 transition flex items-start gap-2 liquid-glass ${
               overrun > 0
-                ? "border-red-400 ring-2 ring-red-100 bg-red-50/20"
+                ? "!border-red-400 ring-2 ring-red-200/80 !bg-red-50/75"
                 : bhAlert
-                  ? "border-amber-400 ring-2 ring-amber-100 bg-amber-50/20"
-                  : "border-slate-200/90 hover:border-slate-300"
+                  ? "!border-amber-400 ring-2 ring-amber-200/80 !bg-amber-50/75"
+                  : "hover:bg-white/80"
             }`}
           >
             <button
@@ -363,7 +363,7 @@ export default function SpotCard({
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
                   title="現在地からGoogleマップで道案内を開始"
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 text-[10px] font-bold transition active:scale-95"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full liquid-glass-pill hover:bg-white text-blue-700 text-[10px] font-bold transition active:scale-95"
                 >
                   <Navigation className="w-3 h-3" />
                   <span>ナビ</span>

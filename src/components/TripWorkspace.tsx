@@ -889,7 +889,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   }
 
   return (
-    <div className="h-dvh flex flex-col bg-[#f5f6f8] text-slate-900 overflow-hidden">
+    <div className="h-dvh flex flex-col liquid-canvas text-slate-900 overflow-hidden">
       {/* パスコードロック画面（初回アクセス時のみ） */}
       {!unlocked && (
         <PasscodeGateModal
@@ -899,8 +899,8 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         />
       )}
 
-      {/* iOS Voyage 風グラスモーフィズムヘッダー（タイトル・日程変更対応） */}
-      <header className="relative z-[1200] px-3.5 py-2 bg-white/95 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between gap-2 shrink-0">
+      {/* iOS Liquid Glass ヘッダー（タイトル・日程変更対応） */}
+      <header className="relative z-[1200] px-3.5 py-2.5 liquid-glass-strong !border-x-0 !border-t-0 flex items-center justify-between gap-2 shrink-0">
         <div className="min-w-0 flex-1">
           <input
             type="text"
@@ -949,7 +949,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           <button
             type="button"
             onClick={() => setShowSidebar(true)}
-            className="p-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 shadow-2xs cursor-pointer"
+            className="p-2 rounded-2xl liquid-glass-pill text-slate-700 hover:bg-white cursor-pointer transition active:scale-95"
             aria-label="メニューを開く"
             title="共有・Muse出力・メニュー"
           >
@@ -960,7 +960,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
       {/* 日程セグメントピルタブ（タイムスケジュール・マップ表示時のみ、Day 1 / Day 2 ... だけをシンプルに横並び） */}
       {(mainTab === "itinerary" || mainTab === "map") && (
-        <div className="bg-white px-3.5 py-2 border-b border-slate-200/80 shrink-0 z-10 space-y-1.5">
+        <div className="bg-white/45 backdrop-blur-xl px-3.5 py-2 border-b border-white/60 shrink-0 z-10 space-y-1.5">
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             {doc.days.map((d) => {
               const active = d.day_index === activeDay.day_index;
@@ -972,8 +972,8 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                   onClick={() => setActiveDayIdx(d.day_index)}
                   className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1 shrink-0 ${
                     active
-                      ? "bg-slate-900 text-white shadow-xs"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      ? "bg-slate-900/90 text-white shadow-[0_6px_16px_-6px_rgba(15,23,42,0.45)]"
+                      : "liquid-glass-pill text-slate-700 hover:bg-white/90"
                   }`}
                 >
                   <span>{d.label}</span>
@@ -1147,7 +1147,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       ) : mainTab === "itinerary" ? (
         <div className="flex-1 overflow-y-auto px-3 py-2.5 space-y-3 max-w-3xl w-full mx-auto">
           {/* 出発設定は普段は1行のコンパクトサマリーバーにして、タイムスケジュールを広く表示する */}
-          <div className="flex items-center justify-between gap-2 rounded-2xl bg-white border border-slate-200/90 px-3 py-2 shadow-2xs">
+          <div className="flex items-center justify-between gap-2 rounded-2xl liquid-glass px-3 py-2.5">
             <button
               type="button"
               onClick={() => setShowDepartureModal(true)}
@@ -1361,10 +1361,10 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                 <button
                   type="button"
                   onClick={() => setReorderMode((v) => !v)}
-                  className={`inline-flex items-center gap-1 px-3.5 py-2 rounded-2xl border text-xs font-bold whitespace-nowrap transition ${
+                  className={`inline-flex items-center gap-1 px-3.5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition ${
                     reorderMode
-                      ? "bg-blue-600 border-blue-600 text-white shadow-sm hover:bg-blue-700"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      ? "liquid-btn-primary text-white"
+                      : "liquid-glass-pill text-slate-700 hover:bg-white"
                   }`}
                 >
                   <ListOrdered className="w-3.5 h-3.5" />
@@ -1374,7 +1374,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               <button
                 type="button"
                 onClick={() => openNewSpotModal()}
-                className="inline-flex items-center gap-1 px-4 py-2 rounded-2xl bg-blue-600 text-white text-xs font-extrabold shadow-sm hover:bg-blue-700"
+                className="inline-flex items-center gap-1 px-4 py-2 rounded-full liquid-btn-primary text-white text-xs font-extrabold transition active:scale-[0.98]"
               >
                 <Plus className="w-4 h-4" />
                 スポットを追加
@@ -1442,47 +1442,49 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         </div>
       )}
 
-      {/* 下部ナビバー：旅程の3ビュー（タイムスケジュール / マップ / 候補プール）だけに特化してスッキリ表示 */}
-      <nav className="bg-white/95 backdrop-blur-md border-t border-slate-200 px-3 py-1.5 grid grid-cols-3 gap-2 shrink-0 z-20">
-        <button
-          type="button"
-          onClick={() => setMainTab("itinerary")}
-          className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition ${
-            mainTab === "itinerary"
-              ? "text-blue-600 font-extrabold bg-blue-50/70"
-              : "text-slate-500 hover:bg-slate-50"
-          }`}
-        >
-          <ListOrdered className="w-4 h-4" />
-          <span className="text-[11px] mt-0.5">タイムスケジュール</span>
-        </button>
+      {/* 下部フローティング Liquid Glass ナビゲーションドック */}
+      <div className="px-3 pb-2.5 pt-1 shrink-0 z-20 pointer-events-none">
+        <nav className="max-w-md mx-auto liquid-glass-strong rounded-[26px] px-2 py-1.5 grid grid-cols-3 gap-1.5 pointer-events-auto">
+          <button
+            type="button"
+            onClick={() => setMainTab("itinerary")}
+            className={`flex flex-col items-center justify-center py-1.5 rounded-[20px] transition ${
+              mainTab === "itinerary"
+                ? "text-blue-600 font-extrabold bg-white/85 shadow-[0_2px_10px_-3px_rgba(37,99,235,0.22),inset_0_1px_0_rgba(255,255,255,1)]"
+                : "text-slate-600 hover:bg-white/40"
+            }`}
+          >
+            <ListOrdered className="w-4 h-4" />
+            <span className="text-[11px] mt-0.5">タイムスケジュール</span>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setMainTab("map")}
-          className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition ${
-            mainTab === "map"
-              ? "text-blue-600 font-extrabold bg-blue-50/70"
-              : "text-slate-500 hover:bg-slate-50"
-          }`}
-        >
-          <MapPin className="w-4 h-4" />
-          <span className="text-[11px] mt-0.5">マップ</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setMainTab("map")}
+            className={`flex flex-col items-center justify-center py-1.5 rounded-[20px] transition ${
+              mainTab === "map"
+                ? "text-blue-600 font-extrabold bg-white/85 shadow-[0_2px_10px_-3px_rgba(37,99,235,0.22),inset_0_1px_0_rgba(255,255,255,1)]"
+                : "text-slate-600 hover:bg-white/40"
+            }`}
+          >
+            <MapPin className="w-4 h-4" />
+            <span className="text-[11px] mt-0.5">マップ</span>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setMainTab("pool")}
-          className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition ${
-            mainTab === "pool"
-              ? "text-indigo-600 font-extrabold bg-indigo-50/70"
-              : "text-slate-500 hover:bg-slate-50"
-          }`}
-        >
-          <Pin className="w-4 h-4" />
-          <span className="text-[11px] mt-0.5">候補プール({poolSpots.length})</span>
-        </button>
-      </nav>
+          <button
+            type="button"
+            onClick={() => setMainTab("pool")}
+            className={`flex flex-col items-center justify-center py-1.5 rounded-[20px] transition ${
+              mainTab === "pool"
+                ? "text-indigo-600 font-extrabold bg-white/85 shadow-[0_2px_10px_-3px_rgba(79,70,229,0.22),inset_0_1px_0_rgba(255,255,255,1)]"
+                : "text-slate-600 hover:bg-white/40"
+            }`}
+          >
+            <Pin className="w-4 h-4" />
+            <span className="text-[11px] mt-0.5">候補プール({poolSpots.length})</span>
+          </button>
+        </nav>
+      </div>
 
       {/* スポット追加・編集モーダル */}
       {editingSpot && (
