@@ -27,6 +27,16 @@ const UUID_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 
 export default function HomePage() {
   const router = useRouter();
+  const [theme] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return localStorage.getItem("voyage:theme") || "forest";
+      } catch {
+        // ignore
+      }
+    }
+    return "forest";
+  });
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -144,25 +154,29 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-dvh bg-gradient-to-b from-blue-50 via-[#f5f6f8] to-white text-slate-900 flex flex-col justify-between p-5">
+    <main
+      data-theme={theme}
+      suppressHydrationWarning
+      className="min-h-dvh liquid-canvas text-slate-900 flex flex-col justify-between p-5"
+    >
       <div className="mx-auto w-full max-w-md space-y-5 pt-4">
         {/* ブランドヘッダー */}
         <div className="space-y-2 text-center">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-3xl bg-[var(--theme-accent)] text-white shadow-lg">
             <Compass className="w-7 h-7" />
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight">Voyage</h1>
           <p className="text-xs text-slate-600 leading-relaxed">
-            友人と部屋ID・URLでリアルタイム共同編集できるモバイルしおり。
+            友人と部屋ID・URLでリアルタイム共同編集できる旅のしおり。
             <br />
-            完成した旅程は構造化JSONでAI（Muse）へ引き渡し、Notionへ登録できます。
+            タイムスケジュール・地図・移動時間の自動計算までまとめて管理できます。
           </p>
         </div>
 
         {/* 最近開いた・作成したしおり一覧 */}
         <div suppressHydrationWarning>
           {recentTrips.length > 0 && (
-            <section className="rounded-3xl bg-white border border-slate-200/90 shadow-md p-4 space-y-2.5">
+            <section className="rounded-3xl liquid-glass p-4 space-y-2.5">
               <h2 className="text-xs font-extrabold text-slate-700">
                 最近編集したしおり（続きから再開）
               </h2>
@@ -170,7 +184,7 @@ export default function HomePage() {
                 {recentTrips.map((t) => (
                   <div
                     key={t.id}
-                    className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-blue-50/50 px-3.5 py-2.5 transition"
+                    className="flex items-center justify-between gap-2 rounded-2xl border border-white/80 bg-white/60 hover:bg-white/90 px-3.5 py-2.5 transition"
                   >
                     <Link href={`/trip/${t.id}`} className="flex-1 min-w-0">
                       <div className="text-sm font-extrabold text-slate-900 truncate">
@@ -178,7 +192,7 @@ export default function HomePage() {
                       </div>
                       {t.start_date && (
                         <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                          <Calendar className="w-3 h-3 text-blue-600" />
+                          <Calendar className="w-3 h-3 text-[var(--theme-accent-text)]" />
                           <span>
                             {t.start_date}
                             {t.end_date ? ` 〜 ${t.end_date}` : ""}
@@ -189,7 +203,7 @@ export default function HomePage() {
                     <button
                       type="button"
                       onClick={() => handleRemoveRecent(t.id)}
-                      className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg"
+                      className="p-1.5 text-slate-400 hover:text-[#b84242] rounded-lg"
                       title="履歴から外す"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -204,7 +218,7 @@ export default function HomePage() {
         {/* 新規しおり作成カード */}
         <form
           onSubmit={handleCreate}
-          className="rounded-3xl bg-white border border-slate-200/90 shadow-xl p-5 space-y-4"
+          className="rounded-3xl liquid-glass-strong p-5 space-y-4"
         >
           <h2 className="text-sm font-extrabold text-slate-900">新しい旅行しおり（部屋）を作成</h2>
 
@@ -216,7 +230,7 @@ export default function HomePage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="例: 週末温泉旅行"
-              className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200/90 bg-white/80 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]"
             />
           </div>
 
@@ -233,7 +247,7 @@ export default function HomePage() {
                     setEndDate(val);
                   }
                 }}
-                className="w-full px-3 py-2 rounded-2xl border border-slate-300 text-xs"
+                className="w-full px-3 py-2 rounded-2xl border border-slate-200/90 bg-white/80 text-xs"
               />
             </div>
             <div className="space-y-1.5">
@@ -243,7 +257,7 @@ export default function HomePage() {
                 min={startDate || undefined}
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-2xl border border-slate-300 text-xs"
+                className="w-full px-3 py-2 rounded-2xl border border-slate-200/90 bg-white/80 text-xs"
               />
             </div>
           </div>
@@ -260,16 +274,16 @@ export default function HomePage() {
               value={passcode}
               onChange={(e) => setPasscode(e.target.value.replace(/\D/g, "").slice(0, 4))}
               placeholder="未入力ならロックなし（例: 1234）"
-              className="w-full px-3.5 py-2 rounded-2xl border border-slate-300 text-xs font-mono tracking-widest"
+              className="w-full px-3.5 py-2 rounded-2xl border border-slate-200/90 bg-white/80 text-xs font-mono tracking-widest"
             />
           </div>
 
-          {err && <p className="text-xs text-red-600 font-semibold">{err}</p>}
+          {err && <p className="text-xs text-[#b84242] font-semibold">{err}</p>}
 
           <button
             type="submit"
             disabled={busy}
-            className="w-full py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-sm font-extrabold shadow-md hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+            className="w-full py-3 rounded-2xl liquid-btn-primary text-white text-sm font-extrabold disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
           >
             <span>{busy ? "作成中..." : "新しい旅行しおりを作成"}</span>
             <ArrowRight className="w-4 h-4" />
@@ -279,10 +293,10 @@ export default function HomePage() {
         {/* 既存の部屋（しおり）に入るカード */}
         <form
           onSubmit={handleJoinRoom}
-          className="rounded-3xl bg-white border border-slate-200/90 shadow-md p-5 space-y-3"
+          className="rounded-3xl liquid-glass p-5 space-y-3"
         >
           <h2 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-            <LogIn className="w-4 h-4 text-indigo-600" />
+            <LogIn className="w-4 h-4 text-[var(--theme-accent-text)]" />
             <span>友人が作成したしおり（部屋）に入る</span>
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -292,7 +306,7 @@ export default function HomePage() {
               value={joinInput}
               onChange={(e) => setJoinInput(e.target.value)}
               placeholder="部屋ID または 共有URLを貼り付け"
-              className="sm:col-span-2 px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono"
+              className="sm:col-span-2 px-3 py-2 rounded-xl border border-slate-200/90 bg-white/80 text-xs font-mono"
             />
             <input
               type="text"
@@ -301,13 +315,13 @@ export default function HomePage() {
               value={joinPasscode}
               onChange={(e) => setJoinPasscode(e.target.value.replace(/\D/g, "").slice(0, 4))}
               placeholder="合言葉(任意)"
-              className="px-3 py-2 rounded-xl border border-slate-300 text-xs font-mono tracking-widest"
+              className="px-3 py-2 rounded-xl border border-slate-200/90 bg-white/80 text-xs font-mono tracking-widest"
             />
           </div>
-          {joinErr && <p className="text-xs text-red-600 font-semibold">{joinErr}</p>}
+          {joinErr && <p className="text-xs text-[#b84242] font-semibold">{joinErr}</p>}
           <button
             type="submit"
-            className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-xs font-extrabold hover:bg-slate-800 inline-flex items-center justify-center gap-1.5"
+            className="w-full py-2.5 rounded-xl bg-slate-900/90 text-white text-xs font-extrabold hover:bg-slate-900 inline-flex items-center justify-center gap-1.5"
           >
             <LogIn className="w-3.5 h-3.5" />
             <span>この部屋に入って共同編集する</span>
@@ -316,20 +330,20 @@ export default function HomePage() {
 
         {/* 特徴一覧 */}
         <div className="grid grid-cols-3 gap-2.5 text-center">
-          <div className="rounded-2xl bg-white border border-slate-200/80 p-3 space-y-1 shadow-2xs">
-            <MapPin className="w-4 h-4 text-blue-600 mx-auto" />
-            <div className="text-xs font-extrabold">地図ピン留め</div>
-            <div className="text-[10px] text-slate-500">検索・タップで追加</div>
+          <div className="rounded-2xl liquid-glass p-3 space-y-1">
+            <MapPin className="w-4 h-4 text-[var(--theme-accent-text)] mx-auto" />
+            <div className="text-xs font-extrabold">地図確認</div>
+            <div className="text-[10px] text-slate-500">位置関係・ルート</div>
           </div>
-          <div className="rounded-2xl bg-white border border-slate-200/80 p-3 space-y-1 shadow-2xs">
-            <Clock className="w-4 h-4 text-emerald-600 mx-auto" />
-            <div className="text-xs font-extrabold">破綻を自動検知</div>
-            <div className="text-[10px] text-slate-500">OSRM移動時間計算</div>
+          <div className="rounded-2xl liquid-glass p-3 space-y-1">
+            <Clock className="w-4 h-4 text-[var(--theme-accent-text)] mx-auto" />
+            <div className="text-xs font-extrabold">移動時間計算</div>
+            <div className="text-[10px] text-slate-500">高速優先/回避対応</div>
           </div>
-          <div className="rounded-2xl bg-white border border-slate-200/80 p-3 space-y-1 shadow-2xs">
-            <Sparkles className="w-4 h-4 text-indigo-600 mx-auto" />
-            <div className="text-xs font-extrabold">Muse JSON連携</div>
-            <div className="text-[10px] text-slate-500">Notion 9DB対応</div>
+          <div className="rounded-2xl liquid-glass p-3 space-y-1">
+            <Sparkles className="w-4 h-4 text-[var(--theme-accent-text)] mx-auto" />
+            <div className="text-xs font-extrabold">共同編集</div>
+            <div className="text-[10px] text-slate-500">費用・持ち物も管理</div>
           </div>
         </div>
       </div>
