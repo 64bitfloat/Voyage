@@ -81,6 +81,17 @@ const TripMap = dynamic(() => import("./TripMap"), {
   ),
 });
 
+type ThemeId = "forest" | "ocean" | "mono" | "terracotta" | "indigo" | "sage";
+
+const THEME_PRESETS: { id: ThemeId; label: string; color: string }[] = [
+  { id: "forest", label: "フォレスト", color: "#2e5a44" },
+  { id: "ocean", label: "オーシャン", color: "#2457a7" },
+  { id: "mono", label: "モノクロ", color: "#26292e" },
+  { id: "terracotta", label: "テラコッタ", color: "#9a4b38" },
+  { id: "indigo", label: "インディゴ", color: "#3f468c" },
+  { id: "sage", label: "セージ", color: "#446a63" },
+];
+
 type MainTab = "itinerary" | "map" | "pool" | "costs" | "prep" | "members";
 
 interface TripWorkspaceProps {
@@ -201,6 +212,25 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   const [showDepartureModal, setShowDepartureModal] = useState(false);
   const [recalcBusy, setRecalcBusy] = useState(false);
   const [reorderMode, setReorderMode] = useState(false);
+  const [theme, setTheme] = useState<ThemeId>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("voyage:theme") as ThemeId | null;
+        if (saved && THEME_PRESETS.some((t) => t.id === saved)) return saved;
+      } catch {
+        // ignore
+      }
+    }
+    return "forest";
+  });
+  function handleChangeTheme(next: ThemeId) {
+    setTheme(next);
+    try {
+      localStorage.setItem("voyage:theme", next);
+    } catch {
+      // ignore
+    }
+  }
   const [autoPlanBusy, setAutoPlanBusy] = useState(false);
   const [autoPlanMsg, setAutoPlanMsg] = useState<string | null>(null);
   const [unlocked, setUnlocked] = useState<boolean>(() => {
@@ -889,7 +919,10 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   }
 
   return (
-    <div className="h-dvh flex flex-col liquid-canvas text-slate-900 overflow-hidden">
+    <div
+      data-theme={theme}
+      className="h-dvh flex flex-col liquid-canvas text-slate-900 overflow-hidden"
+    >
       {/* パスコードロック画面（初回アクセス時のみ） */}
       {!unlocked && (
         <PasscodeGateModal
@@ -920,12 +953,12 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             className="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-none w-full max-w-xs truncate"
           />
           <div className="text-[11px] text-slate-500 flex items-center flex-wrap gap-1.5 mt-0.5">
-            <Calendar className="w-3 h-3 text-blue-600 shrink-0" />
+            <Calendar className="w-3 h-3 text-[var(--theme-accent-text)] shrink-0" />
             <input
               type="date"
               value={doc.trip.start_date ?? ""}
               onChange={(e) => handleChangeTripDates(e.target.value || null, doc.trip.end_date)}
-              className="bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-[11px] font-medium text-slate-700"
+              className="bg-white/60 hover:bg-white/90 px-1.5 py-0.5 rounded text-[11px] font-medium text-slate-700"
             />
             <span>〜</span>
             <input
@@ -933,10 +966,10 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               min={doc.trip.start_date || undefined}
               value={doc.trip.end_date ?? ""}
               onChange={(e) => handleChangeTripDates(doc.trip.start_date, e.target.value || null)}
-              className="bg-slate-100 hover:bg-slate-200 px-1.5 py-0.5 rounded text-[11px] font-medium text-slate-700"
+              className="bg-white/60 hover:bg-white/90 px-1.5 py-0.5 rounded text-[11px] font-medium text-slate-700"
             />
             {schedule.conflicts.length > 0 && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-red-100 text-red-700 font-bold">
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-[#fdf3f3] text-[#b84242] border border-[#b84242]/30 font-bold">
                 <AlertTriangle className="w-3 h-3" />
                 破綻 {schedule.conflicts.length}件
               </span>
@@ -972,7 +1005,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                   onClick={() => setActiveDayIdx(d.day_index)}
                   className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1 shrink-0 ${
                     active
-                      ? "bg-slate-900/90 text-white shadow-[0_6px_16px_-6px_rgba(15,23,42,0.45)]"
+                      ? "bg-[var(--theme-accent)] text-white shadow-[0_6px_16px_-6px_rgba(15,23,42,0.35)]"
                       : "liquid-glass-pill text-slate-700 hover:bg-white/90"
                   }`}
                 >
@@ -980,7 +1013,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                   {d.date && (
                     <span
                       className={`text-[10px] font-medium ${
-                        active ? "text-slate-300" : "text-slate-400"
+                        active ? "text-white/80" : "text-slate-400"
                       }`}
                     >
                       {d.date.slice(5).replace("-", "/")}
@@ -988,7 +1021,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                   )}
                   {dayConflicts > 0 && (
                     <span
-                      className="w-2 h-2 rounded-full bg-red-500 inline-block"
+                      className="w-2 h-2 rounded-full bg-[#b84242] inline-block"
                       title="時刻超過あり"
                     />
                   )}
@@ -999,7 +1032,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             <button
               type="button"
               onClick={handleAddDay}
-              className="px-3 py-1.5 rounded-full text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 whitespace-nowrap shrink-0"
+              className="px-3 py-1.5 rounded-full text-xs font-bold text-[var(--theme-accent-text)] bg-[var(--theme-accent-soft)] border border-[var(--theme-accent-border)] hover:opacity-90 whitespace-nowrap shrink-0"
               title="日程を追加"
             >
               ＋日程
@@ -1009,7 +1042,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               <button
                 type="button"
                 onClick={() => void handleDeleteDay(activeDay.day_index)}
-                className="px-2.5 py-1.5 rounded-full text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 whitespace-nowrap shrink-0 inline-flex items-center gap-1"
+                className="px-2.5 py-1.5 rounded-full text-xs font-bold text-[#b84242] bg-[#fdf3f3] border border-[#b84242]/25 hover:bg-[#fae6e6] whitespace-nowrap shrink-0 inline-flex items-center gap-1"
                 title={`${activeDay.label}を削除`}
               >
                 <Trash2 className="w-3 h-3" />
@@ -1153,7 +1186,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               onClick={() => setShowDepartureModal(true)}
               className="flex-1 min-w-0 flex items-center gap-2 text-left"
             >
-              <span className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <span className="w-6 h-6 rounded-lg bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] flex items-center justify-center shrink-0">
                 <Navigation className="w-3.5 h-3.5" />
               </span>
               <div className="min-w-0 flex items-center gap-1.5 flex-wrap text-xs">
@@ -1170,13 +1203,13 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                     "出発地点未設定"}
                 </span>
                 {daySchedule?.checkoutSpot && (
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80">
                     🏨 宿泊連動
                   </span>
                 )}
                 {daySpots[0] && daySchedule?.timings[daySpots[0].id]?.must_leave_prev_by && (
                   <span
-                    className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200"
+                    className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)]"
                     title={daySchedule.timings[daySpots[0].id]?.leave_by_reason ?? undefined}
                   >
                     🕒 {daySchedule.timings[daySpots[0].id]?.must_leave_prev_by} までに出発
@@ -1450,8 +1483,8 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             onClick={() => setMainTab("itinerary")}
             className={`flex flex-col items-center justify-center py-1.5 rounded-[20px] transition ${
               mainTab === "itinerary"
-                ? "text-blue-600 font-extrabold bg-white/85 shadow-[0_2px_10px_-3px_rgba(37,99,235,0.22),inset_0_1px_0_rgba(255,255,255,1)]"
-                : "text-slate-600 hover:bg-white/40"
+                ? "text-[var(--theme-accent-text)] font-extrabold bg-white/85 shadow-[0_2px_10px_-3px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,1)]"
+                : "text-slate-500 hover:bg-white/40"
             }`}
           >
             <ListOrdered className="w-4 h-4" />
@@ -1463,8 +1496,8 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             onClick={() => setMainTab("map")}
             className={`flex flex-col items-center justify-center py-1.5 rounded-[20px] transition ${
               mainTab === "map"
-                ? "text-blue-600 font-extrabold bg-white/85 shadow-[0_2px_10px_-3px_rgba(37,99,235,0.22),inset_0_1px_0_rgba(255,255,255,1)]"
-                : "text-slate-600 hover:bg-white/40"
+                ? "text-[var(--theme-accent-text)] font-extrabold bg-white/85 shadow-[0_2px_10px_-3px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,1)]"
+                : "text-slate-500 hover:bg-white/40"
             }`}
           >
             <MapPin className="w-4 h-4" />
@@ -1476,8 +1509,8 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             onClick={() => setMainTab("pool")}
             className={`flex flex-col items-center justify-center py-1.5 rounded-[20px] transition ${
               mainTab === "pool"
-                ? "text-indigo-600 font-extrabold bg-white/85 shadow-[0_2px_10px_-3px_rgba(79,70,229,0.22),inset_0_1px_0_rgba(255,255,255,1)]"
-                : "text-slate-600 hover:bg-white/40"
+                ? "text-[var(--theme-accent-text)] font-extrabold bg-white/85 shadow-[0_2px_10px_-3px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,1)]"
+                : "text-slate-500 hover:bg-white/40"
             }`}
           >
             <Pin className="w-4 h-4" />
@@ -1683,7 +1716,37 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                 </button>
               </div>
 
-              {/* 2. 共有・Muse出力 */}
+              {/* 2. テーマカラー設定（普段はサイドバー内に格納） */}
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <div className="text-[10px] font-extrabold text-slate-400 px-1">
+                  テーマカラー
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {THEME_PRESETS.map((preset) => {
+                    const active = theme === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handleChangeTheme(preset.id)}
+                        className={`px-2 py-2 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition ${
+                          active
+                            ? "border-[var(--theme-accent)] bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)]"
+                            : "border-slate-200 bg-white/80 text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/10"
+                          style={{ backgroundColor: preset.color }}
+                        />
+                        <span className="truncate">{preset.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. 共有・Muse出力 */}
               <div className="space-y-1.5 pt-2 border-t border-slate-200">
                 <div className="text-[10px] font-extrabold text-slate-400 px-1">
                   共有・AI連携

@@ -1,8 +1,66 @@
 @import "tailwindcss";
 
-:root {
+:root,
+[data-theme="forest"] {
   --background: #ffffff;
   --foreground: #171717;
+  --theme-accent: #2e5a44;
+  --theme-accent-hover: #234635;
+  --theme-accent-soft: rgba(46, 90, 68, 0.1);
+  --theme-accent-border: rgba(46, 90, 68, 0.25);
+  --theme-accent-text: #234635;
+  --theme-canvas-a: rgba(46, 90, 68, 0.1);
+  --theme-canvas-b: rgba(167, 196, 181, 0.22);
+}
+
+[data-theme="ocean"] {
+  --theme-accent: #2457a7;
+  --theme-accent-hover: #1b4382;
+  --theme-accent-soft: rgba(36, 87, 167, 0.1);
+  --theme-accent-border: rgba(36, 87, 167, 0.24);
+  --theme-accent-text: #1b4382;
+  --theme-canvas-a: rgba(59, 130, 246, 0.11);
+  --theme-canvas-b: rgba(147, 197, 253, 0.22);
+}
+
+[data-theme="mono"] {
+  --theme-accent: #26292e;
+  --theme-accent-hover: #141619;
+  --theme-accent-soft: rgba(38, 41, 46, 0.08);
+  --theme-accent-border: rgba(38, 41, 46, 0.2);
+  --theme-accent-text: #1f2328;
+  --theme-canvas-a: rgba(100, 116, 139, 0.1);
+  --theme-canvas-b: rgba(203, 213, 225, 0.25);
+}
+
+[data-theme="terracotta"] {
+  --theme-accent: #9a4b38;
+  --theme-accent-hover: #7c3b2c;
+  --theme-accent-soft: rgba(154, 75, 56, 0.1);
+  --theme-accent-border: rgba(154, 75, 56, 0.24);
+  --theme-accent-text: #7c3b2c;
+  --theme-canvas-a: rgba(180, 96, 72, 0.1);
+  --theme-canvas-b: rgba(234, 197, 182, 0.24);
+}
+
+[data-theme="indigo"] {
+  --theme-accent: #3f468c;
+  --theme-accent-hover: #30366e;
+  --theme-accent-soft: rgba(63, 70, 140, 0.1);
+  --theme-accent-border: rgba(63, 70, 140, 0.24);
+  --theme-accent-text: #30366e;
+  --theme-canvas-a: rgba(99, 102, 241, 0.1);
+  --theme-canvas-b: rgba(199, 210, 254, 0.24);
+}
+
+[data-theme="sage"] {
+  --theme-accent: #446a63;
+  --theme-accent-hover: #34524d;
+  --theme-accent-soft: rgba(68, 106, 99, 0.1);
+  --theme-accent-border: rgba(68, 106, 99, 0.24);
+  --theme-accent-text: #34524d;
+  --theme-canvas-a: rgba(68, 106, 99, 0.1);
+  --theme-canvas-b: rgba(180, 210, 204, 0.24);
 }
 
 @theme inline {
@@ -26,14 +84,14 @@ body {
   font-family: var(--font-sans);
 }
 
-/* Apple Liquid Glass 風ユーティリティ */
+/* Apple Liquid Glass 風ユーティリティ（単色テーマ連動） */
 .liquid-canvas {
-  background-color: #eef3fb;
+  background-color: #f4f5f3;
   background-image:
-    radial-gradient(at 10% 8%, rgba(147, 197, 253, 0.42) 0px, transparent 52%),
-    radial-gradient(at 88% 12%, rgba(196, 181, 253, 0.34) 0px, transparent 48%),
-    radial-gradient(at 78% 85%, rgba(167, 243, 208, 0.32) 0px, transparent 52%),
-    radial-gradient(at 15% 88%, rgba(186, 230, 253, 0.36) 0px, transparent 50%);
+    radial-gradient(at 12% 8%, var(--theme-canvas-a) 0px, transparent 54%),
+    radial-gradient(at 88% 14%, var(--theme-canvas-b) 0px, transparent 50%),
+    radial-gradient(at 78% 88%, var(--theme-canvas-a) 0px, transparent 54%),
+    radial-gradient(at 14% 86%, var(--theme-canvas-b) 0px, transparent 50%);
 }
 
 .liquid-glass {
@@ -67,11 +125,15 @@ body {
 }
 
 .liquid-btn-primary {
-  background: linear-gradient(180deg, rgba(59, 130, 246, 0.96) 0%, rgba(37, 99, 235, 0.98) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: var(--theme-accent);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   box-shadow:
-    0 8px 20px -6px rgba(37, 99, 235, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    0 8px 20px -6px rgba(15, 23, 42, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+.liquid-btn-primary:hover {
+  background: var(--theme-accent-hover);
 }
 
 /* iPhone/Android のブラウザで input / select をタップした際に勝手にズーム拡大して戻らなくなるのを防止 */
