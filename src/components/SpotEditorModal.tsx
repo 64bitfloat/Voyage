@@ -593,7 +593,7 @@ export default function SpotEditorModal({
           {/* 状態（決まった / 候補 / 未定） */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-neutral-700">
-              決定ステータス（Notion連携用）
+              決定ステータス
             </label>
             <div className="grid grid-cols-3 gap-2">
               {STATUSES.map((st) => {

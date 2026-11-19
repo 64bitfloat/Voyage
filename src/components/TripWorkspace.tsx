@@ -42,6 +42,7 @@ import {
   Clock,
   Flag,
   Lightbulb,
+  Settings,
 } from "lucide-react";
 import {
   addDays,
@@ -76,6 +77,7 @@ import MuseExportModal from "./MuseExportModal";
 import PasscodeGateModal from "./PasscodeGateModal";
 import ShareTripModal from "./ShareTripModal";
 import DepartureSettingsModal from "./DepartureSettingsModal";
+import AppSettingsModal from "./AppSettingsModal";
 
 const TripMap = dynamic(() => import("./TripMap"), {
   ssr: false,
@@ -213,6 +215,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
   } | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [showDepartureModal, setShowDepartureModal] = useState(false);
   const [recalcBusy, setRecalcBusy] = useState(false);
@@ -1452,6 +1455,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               spots={doc.spots}
               onUpsert={handleUpsertCost}
               onDelete={handleDeleteCost}
+              onOpenSettings={() => setShowSettingsModal(true)}
             />
           )}
           {mainTab === "prep" && (
@@ -1584,6 +1588,14 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         <MuseExportModal doc={doc} onClose={() => setShowExportModal(false)} />
       )}
 
+      {/* 設定・アプリ情報モーダル（レシートOCR方式切替・Museデータ出力・免責事項） */}
+      {showSettingsModal && (
+        <AppSettingsModal
+          onClose={() => setShowSettingsModal(false)}
+          onOpenMuseExport={() => setShowExportModal(true)}
+        />
+      )}
+
       {/* しおり共有モーダル */}
       {showShareModal && (
         <ShareTripModal doc={doc} onClose={() => setShowShareModal(false)} />
@@ -1604,14 +1616,14 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         />
       )}
 
-      {/* 右側スライドメニュー（サイドバー：共有・Muse出力・ホーム移動をここに収納） */}
+      {/* 右側スライドメニュー（サイドバー：共有・設定・ホーム移動をここに収納） */}
       {showSidebar && (
         <div
           className="fixed inset-0 z-[2400] bg-slate-900/50 backdrop-blur-xs flex justify-end"
           onClick={() => setShowSidebar(false)}
         >
           <aside
-            className="w-72 max-w-[82vw] h-full bg-white shadow-2xl border-l border-slate-200 p-4 flex flex-col justify-between"
+            className="w-72 max-w-[82vw] h-full bg-white shadow-2xl border-l border-slate-200 p-4 flex flex-col justify-between overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="space-y-4">
@@ -1633,7 +1645,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                 </button>
               </div>
 
-              {/* 1. メインビュー切替（旅程 / 費用 / 準備 / 参加者） */}
+              {/* 1. メインビュー切替（旅程 / 費用 / 準備 / 参加者 / 次回メモ） */}
               <div className="space-y-1.5">
                 <div className="text-[10px] font-extrabold text-slate-400 px-1">
                   画面切り替え
@@ -1750,10 +1762,10 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                 </div>
               </div>
 
-              {/* 3. 共有・Muse出力 */}
+              {/* 3. 共有・設定 */}
               <div className="space-y-1.5 pt-2 border-t border-slate-200">
                 <div className="text-[10px] font-extrabold text-slate-400 px-1">
-                  共有・AI連携
+                  共有・設定
                 </div>
 
                 <button
@@ -1777,26 +1789,26 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                   type="button"
                   onClick={() => {
                     setShowSidebar(false);
-                    setShowExportModal(true);
+                    setShowSettingsModal(true);
                   }}
-                  className="w-full px-3 py-2.5 rounded-2xl border border-[var(--theme-accent-border)] bg-[var(--theme-accent-soft)] hover:opacity-90 text-left flex items-center gap-3 transition"
+                  className="w-full px-3 py-2.5 rounded-2xl border border-slate-200/80 bg-white/80 hover:bg-[var(--theme-accent-soft)] text-left flex items-center gap-3 transition"
                 >
-                  <div className="w-8 h-8 rounded-xl bg-[var(--theme-accent)] text-white flex items-center justify-center shrink-0">
-                    <Sparkles className="w-4 h-4" />
+                  <div className="w-8 h-8 rounded-xl bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)] flex items-center justify-center shrink-0">
+                    <Settings className="w-4 h-4" />
                   </div>
                   <div>
                     <div className="text-xs font-extrabold text-slate-900">
-                      Muse連携用データを出力
+                      設定・アプリ情報
                     </div>
-                    <div className="text-[10px] text-[var(--theme-accent-text)]">
-                      JSON・Markdown・サマリーURL
+                    <div className="text-[10px] text-slate-500">
+                      レシート読み取り・データ出力・免責
                     </div>
                   </div>
                 </button>
               </div>
             </div>
 
-            <div className="border-t border-slate-200 pt-3">
+            <div className="border-t border-slate-200 pt-3 mt-4">
               <Link
                 href="/"
                 className="w-full px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 flex items-center gap-2"

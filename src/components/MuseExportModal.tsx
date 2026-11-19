@@ -93,7 +93,7 @@ export default function MuseExportModal({ doc, onClose }: MuseExportModalProps) 
                 Muse（AI）連携用データを出力
               </h2>
               <p className="text-[11px] text-slate-500">
-                schema_version {exported.schema_version} / Notion 9データベース振り分け対応
+                schema_version {exported.schema_version} / 構造化データ出力（JSON・Markdown・URL）
               </p>
             </div>
           </div>
@@ -290,17 +290,13 @@ export default function MuseExportModal({ doc, onClose }: MuseExportModalProps) 
 
               {/* 第7章: Museへの引き渡し手順 */}
               <div className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 space-y-2 text-xs text-indigo-950">
-                <div className="font-extrabold">Muse（AI）への引き渡し手順（Notion 9DB連携）</div>
+                <div className="font-extrabold">Muse（AI）への引き渡し手順</div>
                 <ol className="list-decimal list-inside space-y-1 text-[11px] leading-relaxed text-indigo-900">
                   <li>上の「JSONをコピー」または「サマリーURL」をMuseに貼り付けて渡します。</li>
-                  <li>Museは <code>?format=json</code> または貼り付けられたJSONを読み取ります。</li>
+                  <li>Museは <code>?format=json</code> または貼り付けられたJSONからしおり全体の構造化データを読み取ります。</li>
                   <li>
-                    Museは対象のNotion旅行ページと9つのDB（旅行名・目的地・参加者・費用・個別費用・持ち物・料理・料理材料・食材）のスキーマを<strong>毎回再取得</strong>し、英語標準値を実際の選択肢へ対応付けます。
+                    参加者・日程・スポット・費用（支払総額と個人別内訳）・持ち物・料理データが一括で連携されます。
                   </li>
-                  <li>
-                    Museは書き込み前に、参加者・日程・費用（支払総額と個人別内訳）の対応付け結果を提示し、確認後に登録します。
-                  </li>
-                  <li>書き込み後、Notion画面の参加者DB「総清算」で最終精算を確認してください。</li>
                 </ol>
               </div>
             </div>

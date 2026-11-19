@@ -72,7 +72,7 @@ export function renderExportMarkdown(exp: VoyageExport): string {
   lines.push(`## 参加者（${t.participants.length}名）`);
   lines.push("");
   if (t.participants.length > 0) {
-    lines.push("| 本名（Notion照合用） | ニックネーム | 役割 |");
+    lines.push("| 本名 | ニックネーム | 役割 |");
     lines.push("| --- | --- | --- |");
     for (const p of t.participants) {
       lines.push(`| ${p.full_name || "（未入力）"} | ${p.nickname || "-"} | ${p.role || "-"} |`);

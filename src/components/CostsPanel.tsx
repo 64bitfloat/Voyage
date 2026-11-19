@@ -21,6 +21,7 @@ import {
   ZoomIn,
   Calendar,
   MapPin,
+  Settings,
 } from "lucide-react";
 import type {
   CostBreakdownRow,
@@ -43,6 +44,8 @@ import {
 import { computeSettlement } from "@/lib/settlement";
 import { compressReceiptFile, receiptUrlToUploadable } from "@/lib/photo/receipt-image";
 import { toTokyoISO } from "@/lib/datetime";
+import { getOcrModeLabel, loadOcrSettings } from "@/lib/ocr/settings";
+import { analyzeReceiptInBrowser } from "@/lib/ocr/tesseract-receipt";
 
 interface CostsPanelProps {
   tripId: string;
@@ -52,6 +55,7 @@ interface CostsPanelProps {
   spots: SpotRow[];
   onUpsert: (cost: CostRow) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onOpenSettings?: () => void;
 }
 
 interface ReceiptAnalysis {
@@ -109,6 +113,7 @@ export default function CostsPanel({
   spots,
   onUpsert,
   onDelete,
+  onOpenSettings,
 }: CostsPanelProps) {
   const [draft, setDraft] = useState<CostRow>(() => emptyDraft(participants));
   // true = 完全割勘（全員均等・レシートからは総額のみ抽出）、false = 一部もしくは全部個別会計
@@ -308,27 +313,55 @@ export default function CostsPanel({
     if (!fullSplitMode && !opts.skipConfirm && lineItems.some((it) => it.name.trim() || it.amount_jpy !== 0)) {
       if (!window.confirm("現在の項目リストを、レシートの読み取り結果で置き換えますか？")) return;
     }
+    const ocrSettings = loadOcrSettings();
     setOcrBusyId(rc.id);
     setOcrMsg(null);
     setSuggestedTotal(null);
     try {
-      const image = await receiptUrlToUploadable(rc.url);
-      const res = await fetch(`/api/trips/${tripId}/receipts/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image }),
-      });
-      const json = (await res.json().catch(() => null)) as (ReceiptAnalysis & { error?: string }) | null;
-      if (!res.ok || !json) {
-        setOcrMsg({
-          kind: "error",
-          text: `${json?.error ?? "レシートの読み取りに失敗しました。"} 下の欄で手入力できます。`,
+      let json: ReceiptAnalysis | null = null;
+
+      if (ocrSettings.mode === "tesseract") {
+        // 初期設定: ブラウザ内OCR（Tesseract.js）。サーバー・外部Azure枠を一切消費しない
+        setOcrMsg({ kind: "info", text: "ブラウザ内OCR（Tesseract）で読み取り中..." });
+        json = await analyzeReceiptInBrowser(rc.url, (progressText) => {
+          setOcrMsg({ kind: "info", text: progressText });
         });
-        if (!fullSplitMode && lineItems.length === 0) {
-          setDraft((d) => ({ ...d, line_items: [newLineItem()] }));
+      } else {
+        // 開発者モード（合言葉）または 自前Azureモード
+        const image = await receiptUrlToUploadable(rc.url);
+        const res = await fetch(`/api/trips/${tripId}/receipts/analyze`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image,
+            mode: ocrSettings.mode,
+            developerPasscode:
+              ocrSettings.mode === "developer" ? ocrSettings.developerPasscode : undefined,
+            customEndpoint:
+              ocrSettings.mode === "custom_azure" ? ocrSettings.customAzureEndpoint : undefined,
+            customKey: ocrSettings.mode === "custom_azure" ? ocrSettings.customAzureKey : undefined,
+          }),
+        });
+        const respJson = (await res.json().catch(() => null)) as (ReceiptAnalysis & { error?: string }) | null;
+        if (!res.ok || !respJson) {
+          setOcrMsg({
+            kind: "error",
+            text: `${respJson?.error ?? "レシートの読み取りに失敗しました。"} 下の欄で手入力できます。`,
+          });
+          if (!fullSplitMode && lineItems.length === 0) {
+            setDraft((d) => ({ ...d, line_items: [newLineItem()] }));
+          }
+          return;
         }
-        return;
+        json = respJson;
       }
+
+      const modeTag =
+        ocrSettings.mode === "tesseract"
+          ? "［ブラウザ内OCR］"
+          : ocrSettings.mode === "developer"
+            ? "［開発者モードAI］"
+            : "［自前Azure AI］";
 
       if (fullSplitMode) {
         // 完全割勘のときは総額（および名目が空なら店名）のみ抽出する
@@ -341,8 +374,8 @@ export default function CostsPanel({
         setOcrMsg({
           kind: json.total_jpy ? "info" : "error",
           text: json.total_jpy
-            ? `レシートから総額（${yen(json.total_jpy)}）を読み取りました。金額が異なる場合は下で修正してください。`
-            : "レシートから合計金額を読み取れませんでした。下の支払総額を手入力してください。",
+            ? `${modeTag} レシートから総額（${yen(json.total_jpy)}）を読み取りました。金額が異なる場合は下で修正してください。`
+            : `${modeTag} レシートから合計金額を読み取れませんでした。下の支払総額を手入力してください。`,
         });
       } else {
         // 個別会計を含むときは品目と価格・総額を抽出して表示
@@ -373,8 +406,8 @@ export default function CostsPanel({
           kind: "info",
           text:
             items.length > 0
-              ? `${items.length}件の品目を読み取りました。金額の誤読や割り当て（割勘／誰の負担か）を確認・修正してから保存してください。`
-              : "品目を読み取れませんでした。下の項目エディタで手入力してください。",
+              ? `${modeTag} ${items.length}件の品目を読み取りました。金額の誤読や割り当て（割勘／誰の負担か）を確認・修正してから保存してください。`
+              : `${modeTag} 品目を読み取れませんでした。下の項目エディタで手入力してください。`,
         });
       }
     } catch (e) {
@@ -598,10 +631,24 @@ export default function CostsPanel({
             </div>
           )}
 
-          <p className="text-[10px] text-slate-500 flex items-start gap-1">
-            <Info className="w-3 h-3 mt-px shrink-0" />
-            レシート画像は読み取りのため外部サービス（Microsoft Azure）へ送信されます。
-          </p>
+          <div className="flex items-center justify-between gap-2 flex-wrap text-[10px] text-slate-500">
+            <span className="flex items-start gap-1 min-w-0">
+              <Info className="w-3 h-3 mt-px shrink-0" />
+              <span>
+                現在の読み取り方式: <strong>{getOcrModeLabel(loadOcrSettings().mode)}</strong>
+              </span>
+            </span>
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="inline-flex items-center gap-1 text-[10px] font-bold text-[var(--theme-accent-text)] hover:underline shrink-0"
+              >
+                <Settings className="w-3 h-3" />
+                <span>読み取り設定を変更</span>
+              </button>
+            )}
+          </div>
 
           {ocrMsg && (
             <div

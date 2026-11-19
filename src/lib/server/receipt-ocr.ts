@@ -2,11 +2,9 @@ import "server-only";
 
 /**
  * Azure AI Document Intelligence（prebuilt-receipt）でレシート画像を解析する。
- * - エンドポイントとキーはサーバー側の環境変数のみで保持し、クライアントへ露出させない。
- *     AZURE_DOC_INTELLIGENCE_ENDPOINT  例: https://<resource>.cognitiveservices.azure.com/
- *     AZURE_DOC_INTELLIGENCE_KEY
+ * - 開発者モード: サーバー側の環境変数 AZURE_DOC_INTELLIGENCE_ENDPOINT / AZURE_DOC_INTELLIGENCE_KEY を使用（合言葉必須）。
+ * - 自前Azureモード: ユーザーが設定画面で指定した endpoint / key を使用（サーバー側には保存しない）。
  * - 無料枠（F0）前提: 1リクエスト=画像1枚、4MB以下。月500ページ上限超過時は quota エラーを返す。
- * - S0 への切り替えはこのコードでは一切行わない（Azure ポータルでユーザーが判断する）。
  */
 
 const API_VERSION = "2024-11-30";
@@ -27,7 +25,15 @@ export interface ReceiptAnalysisResult {
   tax_jpy: number | null;
 }
 
-export type ReceiptAnalysisErrorCode = "not_configured" | "quota" | "too_large" | "bad_image" | "timeout" | "upstream";
+export type ReceiptAnalysisErrorCode =
+  | "not_configured"
+  | "unauthorized"
+  | "invalid_custom_config"
+  | "quota"
+  | "too_large"
+  | "bad_image"
+  | "timeout"
+  | "upstream";
 
 export class ReceiptAnalysisError extends Error {
   constructor(
@@ -38,9 +44,17 @@ export class ReceiptAnalysisError extends Error {
   }
 }
 
-function getConfig(): { endpoint: string; key: string } | null {
-  const endpoint = process.env.AZURE_DOC_INTELLIGENCE_ENDPOINT?.trim();
-  const key = process.env.AZURE_DOC_INTELLIGENCE_KEY?.trim();
+export interface AzureCredentials {
+  endpoint: string;
+  key: string;
+}
+
+export function validateAzureCredentials(
+  rawEndpoint: string | undefined | null,
+  rawKey: string | undefined | null,
+): AzureCredentials | null {
+  const endpoint = rawEndpoint?.trim();
+  const key = rawKey?.trim();
   if (!endpoint || !key) return null;
   let url: URL;
   try {
@@ -48,15 +62,33 @@ function getConfig(): { endpoint: string; key: string } | null {
   } catch {
     return null;
   }
-  // 誤設定によるキーの外部送信を防ぐため、Azure のドメインのみ許可
+  // 誤設定やSSRFによるキーの外部送信を防ぐため、Azure の正規ドメインのみ許可
   const okHost =
     url.hostname.endsWith(".cognitiveservices.azure.com") || url.hostname.endsWith(".api.cognitive.microsoft.com");
   if (url.protocol !== "https:" || !okHost) return null;
   return { endpoint: url.origin, key };
 }
 
+function getServerConfig(): AzureCredentials | null {
+  return validateAzureCredentials(
+    process.env.AZURE_DOC_INTELLIGENCE_ENDPOINT,
+    process.env.AZURE_DOC_INTELLIGENCE_KEY,
+  );
+}
+
+/**
+ * 開発者モード用の合言葉検証。
+ * 環境変数 AZURE_DEV_PASSCODE が設定されていればそれと照合し、未設定の場合はデフォルト合言葉 "voyage-dev" と照合する。
+ */
+export function verifyDeveloperPasscode(inputPasscode: string | undefined | null): boolean {
+  const expected = (process.env.AZURE_DEV_PASSCODE?.trim() || "voyage-dev");
+  const actual = (inputPasscode ?? "").trim();
+  if (!actual) return false;
+  return actual === expected;
+}
+
 export function isReceiptAnalysisConfigured(): boolean {
-  return getConfig() !== null;
+  return getServerConfig() !== null;
 }
 
 type AzureField = {
@@ -88,10 +120,16 @@ function str(f: AzureField | undefined): string | null {
 
 function mapError(status: number, bodyText: string): ReceiptAnalysisError {
   const t = bodyText.toLowerCase();
+  if (status === 401 || (status === 403 && !t.includes("quota") && !t.includes("out of call volume"))) {
+    return new ReceiptAnalysisError(
+      "unauthorized",
+      "Azure APIキーまたはエンドポイントが無効です。設定画面でキーとエンドポイントを確認してください。",
+    );
+  }
   if (status === 429 || (status === 403 && (t.includes("quota") || t.includes("out of call volume")))) {
     return new ReceiptAnalysisError(
       "quota",
-      "読み取りサービスの無料枠（月500ページ）の上限、または一時的な回数制限に達しました。お手数ですが項目を手入力してください。",
+      "読み取りサービスの無料枠（月500ページ）の上限、または一時的な回数制限に達しました。ブラウザ内OCRに切り替えるか項目を手入力してください。",
     );
   }
   if (status === 413 || t.includes("too large") || t.includes("invalidcontentlength")) {
@@ -104,53 +142,58 @@ function mapError(status: number, bodyText: string): ReceiptAnalysisError {
 }
 
 /** base64（data URL 部分を除いたもの）を受け取り解析する */
-export async function analyzeReceiptImage(base64: string): Promise<ReceiptAnalysisResult> {
+export async function analyzeReceiptImage(
+  base64: string,
+  customCredentials?: AzureCredentials | null,
+): Promise<ReceiptAnalysisResult> {
   const bytes = Math.floor((base64.length * 3) / 4);
   if (bytes > AZURE_F0_MAX_BYTES) {
     throw new ReceiptAnalysisError("too_large", "画像サイズが4MBを超えています。");
   }
 
-  const cfg = getConfig();
+  const cfg = customCredentials ?? getServerConfig();
   if (!cfg) {
-    // Next.js 側の環境変数が未設定で、Supabase Edge Function (analyze-receipt) が利用可能な場合はそちらへ委譲
-    const sbUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)?.trim();
-    const sbKey = (
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      process.env.SUPABASE_SECRET_KEY ||
-      process.env.SUPABASE_ANON_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    )?.trim();
-    if (sbUrl && sbKey) {
-      const fnUrl = `${sbUrl.replace(/\/+$/, "")}/functions/v1/analyze-receipt`;
-      const fnRes = await fetch(fnUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${sbKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ base64Source: base64 }),
-        signal: AbortSignal.timeout(40_000),
-      }).catch(() => null);
-      if (fnRes) {
-        if (fnRes.ok) {
-          return (await fnRes.json()) as ReceiptAnalysisResult;
-        }
-        if (fnRes.status !== 404) {
-          const errJson = (await fnRes.json().catch(() => null)) as {
-            code?: ReceiptAnalysisErrorCode;
-            error?: string;
-          } | null;
-          throw new ReceiptAnalysisError(
-            errJson?.code ?? (fnRes.status === 429 ? "quota" : "upstream"),
-            errJson?.error ?? "レシートの読み取りに失敗しました。項目を手入力してください。",
-          );
+    // カスタム認証情報ではなくサーバー設定モードで、Supabase Edge Function が利用可能な場合はそちらへ委譲
+    if (!customCredentials) {
+      const sbUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)?.trim();
+      const sbKey = (
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        process.env.SUPABASE_SECRET_KEY ||
+        process.env.SUPABASE_ANON_KEY ||
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      )?.trim();
+      if (sbUrl && sbKey) {
+        const fnUrl = `${sbUrl.replace(/\/+$/, "")}/functions/v1/analyze-receipt`;
+        const fnRes = await fetch(fnUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${sbKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ base64Source: base64 }),
+          signal: AbortSignal.timeout(40_000),
+        }).catch(() => null);
+        if (fnRes) {
+          if (fnRes.ok) {
+            return (await fnRes.json()) as ReceiptAnalysisResult;
+          }
+          if (fnRes.status !== 404) {
+            const errJson = (await fnRes.json().catch(() => null)) as {
+              code?: ReceiptAnalysisErrorCode;
+              error?: string;
+            } | null;
+            throw new ReceiptAnalysisError(
+              errJson?.code ?? (fnRes.status === 429 ? "quota" : "upstream"),
+              errJson?.error ?? "レシートの読み取りに失敗しました。項目を手入力してください。",
+            );
+          }
         }
       }
     }
 
     throw new ReceiptAnalysisError(
       "not_configured",
-      "レシート読み取りが未設定です（サーバーの環境変数 AZURE_DOC_INTELLIGENCE_ENDPOINT / AZURE_DOC_INTELLIGENCE_KEY）。項目を手入力してください。",
+      "Azureレシート読み取りが未設定です。設定画面から「ブラウザ内OCR」または「自前Azureモード」を選択してください。",
     );
   }
 

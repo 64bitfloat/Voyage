@@ -91,7 +91,7 @@ export default function PrepAndDishesPanel({
       <section className="space-y-3">
         <h3 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
           <Backpack className="w-4 h-4 text-[var(--theme-accent-text)]" />
-          <span>持ち物チェックリスト（Notion持ち物DB用）</span>
+          <span>持ち物チェックリスト</span>
         </h3>
 
         <form onSubmit={handleAddBelonging} className="liquid-glass rounded-3xl p-3.5 space-y-2.5">
@@ -207,7 +207,7 @@ export default function PrepAndDishesPanel({
       <section className="space-y-3">
         <h3 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
           <Utensils className="w-4 h-4 text-[var(--theme-accent-text)]" />
-          <span>料理・材料リスト（Notion料理DB / 料理材料DB / 食材DB用）</span>
+          <span>料理・材料リスト</span>
         </h3>
 
         <form onSubmit={handleAddDish} className="liquid-glass rounded-3xl p-4 space-y-3">
@@ -347,7 +347,7 @@ export default function PrepAndDishesPanel({
                           ),
                         )
                       }
-                      placeholder="食材DB名"
+                      placeholder="食材名(例:豚ひき肉)"
                       className={smallInputCls}
                     />
                   </div>

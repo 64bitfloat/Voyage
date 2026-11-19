@@ -348,8 +348,11 @@ export default function HomePage() {
         </div>
       </div>
 
-      <footer className="text-center text-[11px] text-slate-400 py-4">
-        Voyage — Mobile-first Collaborative Trip Planner (PWA)
+      <footer className="mx-auto max-w-md text-center text-[10px] text-slate-400 py-4 space-y-1 leading-relaxed">
+        <div>Voyage — Mobile-first Collaborative Trip Planner (PWA)</div>
+        <div>
+          ※個人開発のためバグや不具合等の個別対応・サポートはいたしかねます（必要に応じてご自身で構築してください）。ギズモード中橋氏の旅行しおりアプリを参考に制作。
+        </div>
       </footer>
     </main>
   );

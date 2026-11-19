@@ -51,8 +51,8 @@ export default function ParticipantsPanel({
       <div className="rounded-2xl bg-[var(--theme-accent-soft)] border border-[var(--theme-accent-border)] p-3 flex items-start gap-2.5 text-xs text-slate-800">
         <AlertCircle className="w-4 h-4 text-[var(--theme-accent-text)] shrink-0 mt-0.5" />
         <div className="min-w-0">
-          <span className="font-bold text-[var(--theme-accent-text)]">Notion参加者DBとの照合ルール：</span>
-          ニックネームだけでなく、必ず<strong>本名（フルネーム）</strong>を入力してください（費用・持ち物の支払者や担当者の照合に使われます）。
+          <span className="font-bold text-[var(--theme-accent-text)]">参加者登録のポイント：</span>
+          ニックネームだけでなく、<strong>本名（フルネーム）</strong>もあわせて入力してください（費用・精算の支払者や持ち物の担当者の管理に使われます）。
         </div>
       </div>
 
