@@ -12,6 +12,7 @@ import {
   type TripDoc,
 } from "@/lib/model/types";
 import { getStore, isUuid, jsonError, parseBody, requireTripWriteAccess, serverError } from "@/lib/server";
+import { normalizeCostBreakdown } from "@/lib/costs/line-items";
 
 type Ctx = { params: Promise<{ tripId: string }> };
 
@@ -83,7 +84,7 @@ export async function PUT(req: Request, { params }: Ctx) {
       await store.upsertParticipant(tripId, p);
     }
     for (const c of doc.costs) {
-      await store.upsertCost(tripId, c);
+      await store.upsertCost(tripId, normalizeCostBreakdown(c, doc.participants));
     }
     for (const b of doc.belongings) {
       await store.upsertBelonging(tripId, b);

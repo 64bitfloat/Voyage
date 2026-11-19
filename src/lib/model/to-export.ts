@@ -9,6 +9,7 @@ import { CURRENCY, SCHEMA_VERSION, TIMEZONE, type VoyageExport } from "../export
 import { toTokyoISO } from "../datetime";
 import type { DayRow, TripDoc } from "./types";
 import { computeTripSchedule, spotsOfDay } from "../schedule/compute";
+import { normalizeCostBreakdown } from "../costs/line-items";
 
 export function buildExportFromDoc(doc: TripDoc, now: Date = new Date()): VoyageExport {
   const { byDay, conflicts } = computeTripSchedule(doc.days, doc.spots);
@@ -130,23 +131,33 @@ export function buildExportFromDoc(doc: TripDoc, now: Date = new Date()): Voyage
           })),
         };
       }),
-      costs: doc.costs.map((c) => ({
-        id: c.id,
-        title: c.title,
-        category: c.category,
-        total_paid_amount_jpy: c.total_paid_amount_jpy,
-        currency: CURRENCY,
-        payer_full_name: resolveName(c.payer_participant_id, c.payer_full_name),
-        related_spot_id: c.related_spot_id,
-        related_day_index: c.related_day_index,
-        is_settled: c.is_settled,
-        note: c.note,
-        individual_breakdown: c.individual_breakdown.map((b) => ({
-          consumer_full_name: resolveName(b.consumer_participant_id, b.consumer_full_name) ?? "",
-          amount_jpy: b.amount_jpy,
-          note: b.note,
-        })),
-      })),
+      costs: doc.costs.map((raw) => {
+        // line_items がある費用は individual_breakdown を必ず導出し直す（登録・精算の正）
+        const c = normalizeCostBreakdown(raw, doc.participants);
+        return {
+          id: c.id,
+          title: c.title,
+          category: c.category,
+          total_paid_amount_jpy: c.total_paid_amount_jpy,
+          currency: CURRENCY,
+          payer_full_name: resolveName(c.payer_participant_id, c.payer_full_name),
+          related_spot_id: c.related_spot_id,
+          related_day_index: c.related_day_index,
+          is_settled: c.is_settled,
+          note: c.note,
+          individual_breakdown: c.individual_breakdown.map((b) => ({
+            consumer_full_name: resolveName(b.consumer_participant_id, b.consumer_full_name) ?? "",
+            amount_jpy: b.amount_jpy,
+            note: b.note,
+          })),
+          line_items: (c.line_items ?? []).map((it) => ({
+            id: it.id,
+            name: it.name,
+            amount_jpy: it.amount_jpy,
+            assignment: it.assignment,
+          })),
+        };
+      }),
       belongings: doc.belongings.map((b) => ({
         id: b.id,
         name: b.name,

@@ -6,8 +6,15 @@
 import type { TripDoc } from "../model/types";
 
 export function encodeDocSnapshot(doc: TripDoc): string {
-  // 写真は削除済みだが念のため空にしてURL長を抑える
-  const slim: TripDoc = { ...doc, photos: [] };
+  // 写真やレシートの data URL（base64画像本体）は除外してURL長を抑える（https URLと項目内訳は保持）
+  const slim: TripDoc = {
+    ...doc,
+    photos: [],
+    costs: doc.costs.map((c) => ({
+      ...c,
+      receipts: (c.receipts ?? []).filter((r) => /^https:\/\//i.test(r.url)),
+    })),
+  };
   const json = JSON.stringify(slim);
   if (typeof Buffer !== "undefined") {
     return Buffer.from(json, "utf-8").toString("base64url");

@@ -848,11 +848,22 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         costs: exists ? d.costs.map((x) => (x.id === c.id ? c : x)) : [...d.costs, c],
       };
     });
-    await fetch(`/api/trips/${tripId}/costs`, {
+    const res = await fetch(`/api/trips/${tripId}/costs`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(c),
     });
+    if (res.ok) {
+      // サーバー側で導出し直した内訳・Storage へアップロード後のレシートURLを反映
+      const saved = (await res.json().catch(() => null)) as CostRow | null;
+      if (saved && saved.id === c.id) {
+        setDoc((d) => ({ ...d, costs: d.costs.map((x) => (x.id === c.id ? saved : x)) }));
+      }
+    } else {
+      const err = (await res.json().catch(() => null)) as { error?: string } | null;
+      notifyChange();
+      throw new Error(err?.error ?? "費用の保存に失敗しました");
+    }
     notifyChange();
   }
 
@@ -1425,6 +1436,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         <div className="flex-1 overflow-y-auto px-3.5 py-4 max-w-3xl w-full mx-auto">
           {mainTab === "costs" && (
             <CostsPanel
+              tripId={tripId}
               costs={doc.costs}
               participants={doc.participants}
               days={doc.days}

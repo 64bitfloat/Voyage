@@ -5,7 +5,9 @@
  * - Markdown 要約生成・パスコード照合ロジック
  */
 import assert from "node:assert/strict";
-import { initialDays, newSpot, type TripDoc } from "../src/lib/model/types";
+import { initialDays, newSpot, type CostRow, type TripDoc } from "../src/lib/model/types";
+import { SPLIT_ASSIGNMENT, normalizeCostBreakdown, summarizeLineItems } from "../src/lib/costs/line-items";
+import { computeSettlement } from "../src/lib/settlement";
 import { computeDaySchedule } from "../src/lib/schedule/compute";
 import { buildExportFromDoc } from "../src/lib/model/to-export";
 import { renderExportMarkdown, validateExport } from "../src/lib/export";
@@ -179,6 +181,82 @@ assert.equal(exported.trip.days[0].spots[0].photos.length, 1);
 const md = renderExportMarkdown(exported);
 assert.match(md, /精進レークサイドキャンプ/);
 assert.match(md, /10,000円/); // 割勘対象額
+
+// 3b. レシート項目（line_items）→ individual_breakdown 導出と精算（追加プロンプト 受け入れテスト）
+{
+  const participants = doc.participants;
+  const baseCost = doc.costs[0];
+
+  // ケース5（後方互換）: line_items の無い既存データでも精算は従来どおり「佐藤花子 → 山田太郎：5,500円」
+  const legacy = computeSettlement([baseCost], participants);
+  assert.deepEqual(
+    legacy.transfers.map((t) => [t.from_name, t.to_name, t.amount_jpy]),
+    [["佐藤花子", "山田太郎", 5500]],
+  );
+  assert.equal(exported.trip.costs[0].line_items.length, 0);
+
+  // ケース1: コース各5,000円（割勘）＋ドリンクA 1,000円（山田）・B 500円（佐藤）
+  const itemized: CostRow = {
+    ...baseCost,
+    individual_breakdown: [],
+    line_items: [
+      { id: "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e61", name: "コース料理", amount_jpy: 10000, assignment: SPLIT_ASSIGNMENT },
+      { id: "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e62", name: "ドリンクA", amount_jpy: 1000, assignment: "山田太郎" },
+      { id: "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e63", name: "ドリンクB", amount_jpy: 500, assignment: "佐藤花子" },
+    ],
+  };
+  const normalized = normalizeCostBreakdown(itemized, participants);
+  assert.deepEqual(
+    normalized.individual_breakdown.map((b) => [b.consumer_participant_id, b.amount_jpy, b.note]),
+    [
+      [p1Id, 1000, "ドリンクA"],
+      [p2Id, 500, "ドリンクB"],
+    ],
+  );
+  const s1 = computeSettlement([normalized], participants);
+  assert.deepEqual(s1.transfers.map((t) => [t.from_name, t.to_name, t.amount_jpy]), [["佐藤花子", "山田太郎", 5500]]);
+
+  // エクスポートは line_items と導出済み individual_breakdown の両方を含み、警告ゼロ
+  const exp2 = buildExportFromDoc({ ...doc, costs: [itemized] });
+  const v2 = validateExport(exp2);
+  assert.equal(v2.schemaValid, true);
+  assert.equal(v2.issues.length, 0, `期待外の警告: ${JSON.stringify(v2.issues)}`);
+  assert.equal(exp2.trip.costs[0].line_items.length, 3);
+  assert.equal(exp2.trip.costs[0].individual_breakdown.reduce((a, b) => a + b.amount_jpy, 0), 1500);
+  const md2 = renderExportMarkdown(exp2);
+  assert.match(md2, /項目別の割り当て/);
+  assert.match(md2, /\| ドリンクA \| 1,000円 \| 山田太郎 \|/);
+  assert.match(md2, /\| コース料理 \| 10,000円 \| 割勘 \|/);
+
+  // ケース2（残額）: 税抜き表示で項目合計 11,500円・総額 12,650円 → 残額 1,150円は割勘対象
+  const taxed: CostRow = { ...itemized, total_paid_amount_jpy: 12650 };
+  const sum2 = summarizeLineItems(taxed.line_items!, taxed.total_paid_amount_jpy);
+  assert.equal(sum2.remainder, 1150);
+  assert.equal(sum2.personalTotal, 1500);
+  assert.equal(sum2.sharedTotal, 11150);
+  assert.equal(sum2.largeMismatch, true); // 差が100円超 → 警告（保存は妨げない）
+  const s2 = computeSettlement([normalizeCostBreakdown(taxed, participants)], participants);
+  // 割勘 11,150 / 2 = 5,575。佐藤: 5,575 + 500 = 6,075
+  assert.deepEqual(s2.transfers.map((t) => [t.from_name, t.to_name, t.amount_jpy]), [["佐藤花子", "山田太郎", 6075]]);
+
+  // 値引き（マイナス行）は割勘のまま扱える／全項目割勘なら全額割勘と同じ
+  const allSplit = summarizeLineItems(
+    [{ id: "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e64", name: "クーポン", amount_jpy: -500, assignment: SPLIT_ASSIGNMENT }],
+    0,
+  );
+  assert.equal(allSplit.allSplit, true);
+
+  // ケース4（全額割勘）: 内訳なしなら総額を均等割り
+  const s4 = computeSettlement([{ ...baseCost, individual_breakdown: [], line_items: [] }], participants);
+  assert.deepEqual(s4.transfers.map((t) => [t.from_name, t.to_name, t.amount_jpy]), [["佐藤花子", "山田太郎", 5750]]);
+
+  // 参加者にいない割り当ては警告
+  const bad = buildExportFromDoc({
+    ...doc,
+    costs: [{ ...itemized, line_items: [{ ...itemized.line_items![1], assignment: "知らない人" }] }],
+  });
+  assert.ok(validateExport(bad).issues.some((i) => i.code === "line_item_assignee_not_participant"));
+}
 
 // 4. 日本語テキストからの営業時間・定休日自動抽出 & 休業日・営業時間外アラート検証（下條温泉郷 コスモスの湯の例）
 const sampleSnippet =

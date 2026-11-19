@@ -146,6 +146,22 @@ export const BreakdownItemSchema = z.object({
   note: z.string(),
 });
 
+/** 項目ごとの負担割り当て: 割勘は固定値 "split"、個人負担はその参加者の full_name */
+export const SPLIT_ASSIGNMENT = "split" as const;
+
+/**
+ * 費用の項目（レシート読み取り or 手入力）。内訳の根拠情報。
+ * 登録・精算の正は individual_breakdown（line_items から自動導出）。
+ */
+export const LineItemSchema = z.object({
+  id: IdSchema,
+  name: z.string(),
+  /** 行の合計金額（整数円）。値引き・クーポンはマイナス可 */
+  amount_jpy: YenSchema,
+  /** "split" または 参加者の full_name */
+  assignment: z.string().min(1, "割り当てを指定してください"),
+});
+
 export const CostSchema = z.object({
   id: IdSchema,
   title: z.string(),
@@ -160,6 +176,8 @@ export const CostSchema = z.object({
   note: z.string(),
   /** 個人別の内訳（支払者本人の分も含める）。空なら全額が割勘対象 */
   individual_breakdown: z.array(BreakdownItemSchema),
+  /** 追加フィールド（任意・schema_version 1.0 のまま）。項目ごとの割り当ての根拠 */
+  line_items: z.array(LineItemSchema).default([]),
 });
 
 export const BelongingSchema = z.object({
@@ -232,6 +250,7 @@ export type Lodging = z.infer<typeof LodgingSchema>;
 export type Participant = z.infer<typeof ParticipantSchema>;
 export type Cost = z.infer<typeof CostSchema>;
 export type BreakdownItem = z.infer<typeof BreakdownItemSchema>;
+export type LineItem = z.infer<typeof LineItemSchema>;
 export type Belonging = z.infer<typeof BelongingSchema>;
 export type Dish = z.infer<typeof DishSchema>;
 export type Ingredient = z.infer<typeof IngredientSchema>;

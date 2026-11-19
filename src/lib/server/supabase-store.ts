@@ -180,21 +180,49 @@ export class SupabaseStore implements TripStore {
   }
 
   async upsertCost(tripId: string, cost: CostRow) {
-    const r1 = await this.db.from("costs").upsert(
-      {
-        id: cost.id,
-        trip_id: tripId,
-        title: cost.title,
-        category: cost.category,
-        total_paid_amount_jpy: cost.total_paid_amount_jpy,
-        payer_participant_id: cost.payer_participant_id,
-        related_spot_id: cost.related_spot_id,
-        related_day_index: cost.related_day_index,
-        is_settled: cost.is_settled,
-        note: cost.note,
-      },
-      { onConflict: "id" },
+    // レシート画像（data URL）は Storage バケット "receipts" へアップロードして公開URLに置き換える
+    const receipts = await Promise.all(
+      (cost.receipts ?? []).map(async (rc) => {
+        if (!rc.url.startsWith("data:image/")) return rc;
+        try {
+          const commaIdx = rc.url.indexOf(",");
+          const mime = rc.url.slice(0, commaIdx).match(/data:(.*?);/)?.[1] ?? "image/jpeg";
+          const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+          const path = `${tripId}/${cost.id}/${rc.id}.${ext}`;
+          const bytes = Buffer.from(rc.url.slice(commaIdx + 1), "base64");
+          const up = await this.db.storage.from("receipts").upload(path, bytes, { contentType: mime, upsert: true });
+          if (!up.error) {
+            const pub = this.db.storage.from("receipts").getPublicUrl(path);
+            if (pub.data?.publicUrl) return { ...rc, url: pub.data.publicUrl };
+          }
+        } catch {
+          // バケット未作成時は data URL のまま保持
+        }
+        return rc;
+      }),
     );
+    cost.receipts = receipts;
+
+    const baseRow = {
+      id: cost.id,
+      trip_id: tripId,
+      title: cost.title,
+      category: cost.category,
+      total_paid_amount_jpy: cost.total_paid_amount_jpy,
+      payer_participant_id: cost.payer_participant_id,
+      related_spot_id: cost.related_spot_id,
+      related_day_index: cost.related_day_index,
+      is_settled: cost.is_settled,
+      note: cost.note,
+    };
+    let r1 = await this.db
+      .from("costs")
+      .upsert({ ...baseRow, line_items: cost.line_items ?? [], receipts }, { onConflict: "id" });
+    if (r1.error && /line_items|receipts/.test(r1.error.message ?? "")) {
+      // マイグレーション 0002 未適用の DB でも費用の保存自体は止めない（項目・レシートは保存されない）
+      console.warn("[voyage] costs.line_items / receipts 列がありません。supabase/migrations/0002 を適用してください");
+      r1 = await this.db.from("costs").upsert(baseRow, { onConflict: "id" });
+    }
     if (r1.error) throw r1.error;
 
     await this.db.from("cost_breakdowns").delete().eq("cost_id", cost.id);
@@ -390,6 +418,21 @@ function costFromDb(r: Record<string, unknown>, pNameMap: Map<string, string>): 
     is_settled: Boolean(r.is_settled),
     note: String(r.note ?? ""),
     individual_breakdown: breakdowns,
+    line_items: Array.isArray(r.line_items)
+      ? (r.line_items as Record<string, unknown>[]).map((it) => ({
+          id: String(it.id ?? ""),
+          name: String(it.name ?? ""),
+          amount_jpy: Math.round(Number(it.amount_jpy ?? 0)),
+          assignment: String(it.assignment ?? "split") || "split",
+        }))
+      : [],
+    receipts: Array.isArray(r.receipts)
+      ? (r.receipts as Record<string, unknown>[]).map((rc) => ({
+          id: String(rc.id ?? ""),
+          url: String(rc.url ?? ""),
+          created_at: (rc.created_at as string | null) ?? null,
+        }))
+      : [],
   };
 }
 

@@ -31,6 +31,8 @@ export type IssueCode =
   | "missing_required"
   | "payer_not_participant"
   | "consumer_not_participant"
+  | "line_item_assignee_not_participant"
+  | "line_items_total_mismatch"
   | "assignee_not_participant"
   | "breakdown_exceeds_total"
   | "payer_not_in_breakdown"
@@ -247,6 +249,19 @@ function checkCosts(data: VoyageExport, issues: ExportIssue[]) {
       // 支払者本人の分の省略は割勘を狂わせる典型ミス（第6.3章）。ただし本人分がない正当なケースもあるため info
       if (c.payer_full_name && !c.individual_breakdown.some((b) => normalizeName(b.consumer_full_name) === normalizeName(c.payer_full_name!)))
         issues.push({ severity: "info", code: "payer_not_in_breakdown", path: `${path}.individual_breakdown`, message: `費用「${c.title}」の内訳に支払者「${c.payer_full_name}」本人の分がありません。本人の個別分（ドリンク等）がある場合は省略せず入れてください` });
+    }
+
+    // 項目ごとの割り当て（line_items）: assignment は "split" か参加者の本名のみ
+    const items = c.line_items ?? [];
+    items.forEach((it, j) => {
+      if (it.assignment !== "split" && !names.has(normalizeName(it.assignment)))
+        issues.push({ severity: "warning", code: "line_item_assignee_not_participant", path: `${path}.line_items[${j}].assignment`, message: `費用「${c.title}」の項目「${it.name}」の負担者「${it.assignment}」が参加者一覧にいません` });
+    });
+    if (items.length > 0) {
+      const itemsTotal = items.reduce((a, it) => a + it.amount_jpy, 0);
+      const diff = Math.abs(c.total_paid_amount_jpy - itemsTotal);
+      if (diff > 100 || (c.total_paid_amount_jpy > 0 && diff > c.total_paid_amount_jpy * 0.1))
+        issues.push({ severity: "info", code: "line_items_total_mismatch", path: `${path}.line_items`, message: `費用「${c.title}」の項目合計（${yen(itemsTotal)}）と支払総額（${yen(c.total_paid_amount_jpy)}）の差が大きいです。読み取り漏れや誤読の可能性があります（残額は割勘対象になります）` });
     }
   });
 }

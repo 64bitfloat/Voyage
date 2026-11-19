@@ -96,6 +96,29 @@ export const CostBreakdownRowSchema = z.object({
 });
 export type CostBreakdownRow = z.infer<typeof CostBreakdownRowSchema>;
 
+/** 費用の項目（レシート読み取り or 手入力）。assignment は "split" か参加者の full_name */
+export const CostLineItemRowSchema = z.object({
+  id: IdSchema,
+  name: z.string().max(200),
+  amount_jpy: YenSchema.min(-10_000_000).max(100_000_000),
+  assignment: z.string().min(1).max(100),
+});
+export type CostLineItemRow = z.infer<typeof CostLineItemRowSchema>;
+
+/** 費用に添付したレシート画像（Supabase Storage の公開URL、または未設定時は data URL） */
+export const CostReceiptRowSchema = z.object({
+  id: IdSchema,
+  url: z
+    .string()
+    .max(8_000_000)
+    .refine(
+      (u) => /^https:\/\//i.test(u) || /^data:image\/(jpeg|png|webp);base64,/i.test(u),
+      "レシート画像は https URL または画像の data URL のみ指定できます",
+    ),
+  created_at: DateTimeSchema.nullable(),
+});
+export type CostReceiptRow = z.infer<typeof CostReceiptRowSchema>;
+
 export const CostRowSchema = z.object({
   id: IdSchema,
   title: z.string().max(200),
@@ -107,7 +130,11 @@ export const CostRowSchema = z.object({
   related_day_index: z.number().int().nonnegative().nullable(),
   is_settled: z.boolean(),
   note: z.string().max(1000),
-  individual_breakdown: z.array(CostBreakdownRowSchema),
+  individual_breakdown: z.array(CostBreakdownRowSchema).max(200),
+  /** 項目ごとに分ける場合の項目リスト（無い/空なら従来どおり individual_breakdown を直接編集） */
+  line_items: z.array(CostLineItemRowSchema).max(300).optional(),
+  /** 添付レシート画像 */
+  receipts: z.array(CostReceiptRowSchema).max(10).optional(),
 });
 export type CostRow = z.infer<typeof CostRowSchema>;
 

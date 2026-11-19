@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { IdSchema } from "@/lib/export/schema";
 import { CostRowSchema } from "@/lib/model/types";
+import { normalizeCostBreakdown } from "@/lib/costs/line-items";
 import { getStore, isUuid, jsonError, parseBody, requireTripWriteAccess, serverError } from "@/lib/server";
 
 type Ctx = { params: Promise<{ tripId: string }> };
@@ -14,8 +15,12 @@ export async function PUT(req: Request, { params }: Ctx) {
   const body = await parseBody(req, CostRowSchema);
   if (!body.ok) return body.res;
   try {
-    await getStore().upsertCost(tripId, body.data);
-    return NextResponse.json(body.data);
+    // line_items がある費用は individual_breakdown をサーバー側でも導出し直す（二重管理の防止）
+    const doc = await getStore().getTripDoc(tripId);
+    if (!doc) return jsonError(404, "旅行が見つかりません");
+    const cost = normalizeCostBreakdown(body.data, doc.participants);
+    await getStore().upsertCost(tripId, cost);
+    return NextResponse.json(cost);
   } catch (e) {
     return serverError(e);
   }

@@ -146,6 +146,29 @@ export function renderExportMarkdown(exp: VoyageExport): string {
         )}円 | ${c.payer_full_name ?? "未設定"} | ${bdText} | ${shared.toLocaleString("ja-JP")}円 |`,
       );
     }
+
+    // 項目ごとの割り当て（line_items がある費用のみ）
+    const itemized = t.costs.filter((c) => (c.line_items?.length ?? 0) > 0);
+    for (const c of itemized) {
+      const items = c.line_items ?? [];
+      const itemsTotal = items.reduce((a, it) => a + it.amount_jpy, 0);
+      const remainder = c.total_paid_amount_jpy - itemsTotal;
+      lines.push("");
+      lines.push(`### 項目別の割り当て: ${c.title}`);
+      lines.push("");
+      lines.push("| 項目 | 金額 (JPY) | 負担 |");
+      lines.push("| --- | --- | --- |");
+      for (const it of items) {
+        lines.push(
+          `| ${(it.name || "（名称なし）").replace(/\|/g, "｜")} | ${it.amount_jpy.toLocaleString("ja-JP")}円 | ${
+            it.assignment === "split" ? "割勘" : it.assignment
+          } |`,
+        );
+      }
+      if (remainder !== 0) {
+        lines.push(`| （残額: 税・端数など） | ${remainder.toLocaleString("ja-JP")}円 | 割勘 |`);
+      }
+    }
   }
   lines.push("");
 
