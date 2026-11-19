@@ -41,6 +41,7 @@ import {
   Trash2,
   Clock,
   Flag,
+  Lightbulb,
 } from "lucide-react";
 import {
   addDays,
@@ -69,6 +70,8 @@ import LegEditorModal from "./LegEditorModal";
 import ParticipantsPanel from "./ParticipantsPanel";
 import CostsPanel from "./CostsPanel";
 import PrepAndDishesPanel from "./PrepAndDishesPanel";
+import RetroNotesPanel from "./RetroNotesPanel";
+import { parseRetroNotes } from "@/lib/notes/retrospective";
 import MuseExportModal from "./MuseExportModal";
 import PasscodeGateModal from "./PasscodeGateModal";
 import ShareTripModal from "./ShareTripModal";
@@ -94,7 +97,7 @@ const THEME_PRESETS: { id: ThemeId; label: string; color: string }[] = [
   { id: "sage", label: "セージ", color: "#446a63" },
 ];
 
-type MainTab = "itinerary" | "map" | "pool" | "costs" | "prep" | "members";
+type MainTab = "itinerary" | "map" | "pool" | "costs" | "prep" | "members" | "retro";
 
 interface TripWorkspaceProps {
   initialDoc: TripDoc;
@@ -1079,8 +1082,8 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
         </div>
       )}
 
-      {/* 費用・準備・参加者ビュー表示時の上部タイトルバー（ワンタップで旅程へ戻れる） */}
-      {(mainTab === "costs" || mainTab === "prep" || mainTab === "members") && (
+      {/* 費用・準備・参加者・次回メモビュー表示時の上部タイトルバー（ワンタップで旅程へ戻れる） */}
+      {(mainTab === "costs" || mainTab === "prep" || mainTab === "members" || mainTab === "retro") && (
         <div className="liquid-glass-strong !border-x-0 !border-t-0 px-3.5 py-2 flex items-center justify-between shrink-0 z-10">
           <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
             {mainTab === "costs" && (
@@ -1098,7 +1101,13 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             {mainTab === "members" && (
               <>
                 <Users className="w-4 h-4 text-[var(--theme-accent-text)]" />
-                <span>参加者・全体メモ（{doc.participants.length}名）</span>
+                <span>参加者（{doc.participants.length}名）</span>
+              </>
+            )}
+            {mainTab === "retro" && (
+              <>
+                <Lightbulb className="w-4 h-4 text-[var(--theme-accent-text)]" />
+                <span>次回に活かすメモ（{parseRetroNotes(doc.trip.notes).length}件）</span>
               </>
             )}
           </div>
@@ -1458,37 +1467,26 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
             />
           )}
           {mainTab === "members" && (
-            <div className="space-y-6">
-              <ParticipantsPanel
-                participants={doc.participants}
-                onUpsert={handleUpsertParticipant}
-                onDelete={handleDeleteParticipant}
-              />
-
-              {/* 全体メモ（構造化できない補足のみ） */}
-              <div className="liquid-glass rounded-3xl p-4 space-y-2">
-                <label className="block text-xs font-extrabold text-slate-800">
-                  全体メモ（自由記述・構造化できない補足のみ）
-                </label>
-                <textarea
-                  rows={3}
-                  defaultValue={doc.trip.notes}
-                  onBlur={async (e) => {
-                    const notes = e.target.value;
-                    if (notes === doc.trip.notes) return;
-                    setDoc((d) => ({ ...d, trip: { ...d.trip, notes } }));
-                    await fetch(`/api/trips/${tripId}`, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ notes }),
-                    });
-                    notifyChange();
-                  }}
-                  placeholder="集合時の注意事項など"
-                  className="w-full min-w-0 px-3 py-2 rounded-xl border border-slate-200 bg-white/85 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent-border)]"
-                />
-              </div>
-            </div>
+            <ParticipantsPanel
+              participants={doc.participants}
+              onUpsert={handleUpsertParticipant}
+              onDelete={handleDeleteParticipant}
+            />
+          )}
+          {mainTab === "retro" && (
+            <RetroNotesPanel
+              notes={doc.trip.notes}
+              participants={doc.participants}
+              onSaveNotes={async (notes) => {
+                setDoc((d) => ({ ...d, trip: { ...d.trip, notes } }));
+                await fetch(`/api/trips/${tripId}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ notes }),
+                });
+                notifyChange();
+              }}
+            />
           )}
         </div>
       )}
@@ -1680,8 +1678,18 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                         setShowSidebar(false);
                       },
                       Icon: Users,
-                      title: `参加者・全体メモ (${doc.participants.length})`,
+                      title: `参加者 (${doc.participants.length})`,
                       sub: "メンバー本名・ニックネーム",
+                    },
+                    {
+                      active: mainTab === "retro",
+                      onClick: () => {
+                        setMainTab("retro");
+                        setShowSidebar(false);
+                      },
+                      Icon: Lightbulb,
+                      title: `次回に活かすメモ (${parseRetroNotes(doc.trip.notes).length})`,
+                      sub: "反省点・次回へのアイデア",
                     },
                   ] as const
                 ).map(({ active, onClick, Icon, title, sub }) => (
