@@ -1211,30 +1211,32 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               </button>
             </div>
           ) : (
-            <div className="space-y-1.5">
-              {poolSpots.map((spot, idx) => (
-                <SpotCard
-                  key={spot.id}
-                  index={idx}
-                  spot={spot}
-                  dayDate={null}
-                  timing={undefined}
-                  onEdit={(s) => setEditingSpot({ spot: s, isNew: false })}
-                />
-              ))}
-            </div>
-          )}
+            <>
+              <div className="space-y-1.5">
+                {poolSpots.map((spot, idx) => (
+                  <SpotCard
+                    key={spot.id}
+                    index={idx}
+                    spot={spot}
+                    dayDate={null}
+                    timing={undefined}
+                    onEdit={(s) => setEditingSpot({ spot: s, isNew: false })}
+                  />
+                ))}
+              </div>
 
-          <div className="flex justify-end pt-1 pb-6">
-            <button
-              type="button"
-              onClick={() => openNewSpotModal(undefined, 0)}
-              className="inline-flex items-center gap-1 px-4 py-2 rounded-full liquid-btn-primary text-white text-xs font-extrabold"
-            >
-              <Plus className="w-4 h-4" />
-              候補プールに追加
-            </button>
-          </div>
+              <div className="flex justify-end pt-1 pb-6">
+                <button
+                  type="button"
+                  onClick={() => openNewSpotModal(undefined, 0)}
+                  className="inline-flex items-center gap-1 px-4 py-2 rounded-full liquid-btn-primary text-white text-xs font-extrabold"
+                >
+                  <Plus className="w-4 h-4" />
+                  候補プールにスポットを追加
+                </button>
+              </div>
+            </>
+          )}
         </div>
       ) : mainTab === "itinerary" ? (
         <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-x-none touch-pan-y px-3 py-2.5 space-y-3 max-w-3xl w-full mx-auto">
@@ -1368,7 +1370,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
 
           {/* スポット一覧（Voyage風クロノグラフ軸 + D&D） */}
           {daySpots.length === 0 && !daySchedule?.checkoutSpot ? (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-white/80 p-6 text-center space-y-3">
+            <div className="rounded-3xl liquid-glass border-dashed p-6 text-center space-y-3">
               <p className="text-xs text-slate-600">
                 まだスポットがありません。直接追加するか、「マップ」タブから場所を検索・タップしてピン留めできます。
               </p>
@@ -1376,7 +1378,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                 <button
                   type="button"
                   onClick={() => openNewSpotModal()}
-                  className="inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-xs hover:bg-blue-700"
+                  className="inline-flex items-center gap-1 px-4 py-2 rounded-full liquid-btn-primary text-white text-xs font-bold"
                 >
                   <Plus className="w-4 h-4" />
                   スポットを直接追加
@@ -1384,7 +1386,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                 <button
                   type="button"
                   onClick={() => setMainTab("map")}
-                  className="inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-xs hover:bg-slate-800"
+                  className="inline-flex items-center gap-1 px-4 py-2 rounded-full bg-slate-900 text-white text-xs font-bold shadow-xs hover:bg-slate-800"
                 >
                   <MapPin className="w-4 h-4" />
                   マップからピン留め追加
@@ -1392,91 +1394,93 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               </div>
             </div>
           ) : (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={daySpots.map((s) => s.id)}
-                strategy={verticalListSortingStrategy}
+            <>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                <div>
-                  {daySpots.map((spot, idx) => (
-                    <SpotCard
-                      key={spot.id}
-                      index={idx}
-                      spot={spot}
-                      dayDate={activeDay.date}
-                      timing={daySchedule?.timings[spot.id]}
-                      reorderMode={reorderMode}
-                      onEdit={(s) => setEditingSpot({ spot: s, isNew: false })}
-                      onEditLeg={(s) => {
-                        const prevSpot = idx > 0 ? daySpots[idx - 1] : null;
-                        const co = daySchedule?.checkoutSpot ?? null;
-                        const fromLabel = prevSpot
-                          ? prevSpot.name
-                          : activeDay.departure_point || co?.name || "出発地";
-                        const fromCoords: LatLng | null = prevSpot
-                          ? prevSpot.lat !== null && prevSpot.lng !== null
-                            ? { lat: prevSpot.lat, lng: prevSpot.lng }
-                            : null
-                          : activeDay.departure_lat !== null && activeDay.departure_lng !== null
-                            ? { lat: activeDay.departure_lat, lng: activeDay.departure_lng }
-                            : co && co.lat !== null && co.lng !== null
-                              ? { lat: co.lat, lng: co.lng }
-                              : null;
-                        const routeFromKey = prevSpot
-                          ? `spot:${prevSpot.id}`
-                          : `day:${activeDay.day_index}`;
-                        setEditingLeg({
-                          spot: s,
-                          fromLabel,
-                          fromCoords,
-                          routeFromKey,
-                        });
-                      }}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          )}
-
-          <div className="flex items-center justify-between pt-1 pb-6">
-            {daySchedule?.end ? (
-              <span className="text-xs text-slate-500 font-mono font-bold inline-flex items-center gap-1.5">
-                <Flag className="w-3.5 h-3.5 shrink-0 text-[var(--theme-accent-text)]" />
-                <span>全行程終了予定: {toTokyoHHMM(daySchedule.end)}</span>
-              </span>
-            ) : (
-              <span />
-            )}
-            <div className="flex items-center gap-2 shrink-0">
-              {daySpots.length >= 2 && (
-                <button
-                  type="button"
-                  onClick={() => setReorderMode((v) => !v)}
-                  className={`inline-flex items-center gap-1 px-3.5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition ${
-                    reorderMode
-                      ? "liquid-btn-primary text-white"
-                      : "liquid-glass-pill text-slate-700 hover:bg-white"
-                  }`}
+                <SortableContext
+                  items={daySpots.map((s) => s.id)}
+                  strategy={verticalListSortingStrategy}
                 >
-                  <ListOrdered className="w-3.5 h-3.5" />
-                  <span>{reorderMode ? "完了" : "順番編集"}</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => openNewSpotModal()}
-                className="inline-flex items-center gap-1 px-4 py-2 rounded-full liquid-btn-primary text-white text-xs font-extrabold transition active:scale-[0.98]"
-              >
-                <Plus className="w-4 h-4" />
-                スポットを追加
-              </button>
-            </div>
-          </div>
+                  <div>
+                    {daySpots.map((spot, idx) => (
+                      <SpotCard
+                        key={spot.id}
+                        index={idx}
+                        spot={spot}
+                        dayDate={activeDay.date}
+                        timing={daySchedule?.timings[spot.id]}
+                        reorderMode={reorderMode}
+                        onEdit={(s) => setEditingSpot({ spot: s, isNew: false })}
+                        onEditLeg={(s) => {
+                          const prevSpot = idx > 0 ? daySpots[idx - 1] : null;
+                          const co = daySchedule?.checkoutSpot ?? null;
+                          const fromLabel = prevSpot
+                            ? prevSpot.name
+                            : activeDay.departure_point || co?.name || "出発地";
+                          const fromCoords: LatLng | null = prevSpot
+                            ? prevSpot.lat !== null && prevSpot.lng !== null
+                              ? { lat: prevSpot.lat, lng: prevSpot.lng }
+                              : null
+                            : activeDay.departure_lat !== null && activeDay.departure_lng !== null
+                              ? { lat: activeDay.departure_lat, lng: activeDay.departure_lng }
+                              : co && co.lat !== null && co.lng !== null
+                                ? { lat: co.lat, lng: co.lng }
+                                : null;
+                          const routeFromKey = prevSpot
+                            ? `spot:${prevSpot.id}`
+                            : `day:${activeDay.day_index}`;
+                          setEditingLeg({
+                            spot: s,
+                            fromLabel,
+                            fromCoords,
+                            routeFromKey,
+                          });
+                        }}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+
+              <div className="flex items-center justify-between pt-1 pb-6">
+                {daySchedule?.end ? (
+                  <span className="text-xs text-slate-500 font-mono font-bold inline-flex items-center gap-1.5">
+                    <Flag className="w-3.5 h-3.5 shrink-0 text-[var(--theme-accent-text)]" />
+                    <span>全行程終了予定: {toTokyoHHMM(daySchedule.end)}</span>
+                  </span>
+                ) : (
+                  <span />
+                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {daySpots.length >= 2 && (
+                    <button
+                      type="button"
+                      onClick={() => setReorderMode((v) => !v)}
+                      className={`inline-flex items-center gap-1 px-3.5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition ${
+                        reorderMode
+                          ? "liquid-btn-primary text-white"
+                          : "liquid-glass-pill text-slate-700 hover:bg-white"
+                      }`}
+                    >
+                      <ListOrdered className="w-3.5 h-3.5" />
+                      <span>{reorderMode ? "完了" : "順番編集"}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => openNewSpotModal()}
+                    className="inline-flex items-center gap-1 px-4 py-2 rounded-full liquid-btn-primary text-white text-xs font-extrabold transition active:scale-[0.98]"
+                  >
+                    <Plus className="w-4 h-4" />
+                    スポットを追加
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-x-none touch-pan-y px-3.5 py-4 max-w-3xl w-full mx-auto">
