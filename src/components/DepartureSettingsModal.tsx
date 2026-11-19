@@ -139,14 +139,14 @@ export default function DepartureSettingsModal({
       >
         <div className="flex items-center justify-between border-b border-slate-200 pb-3">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-[var(--theme-accent)] text-white flex items-center justify-center">
               <Navigation className="w-4 h-4" />
             </div>
             <div>
               <h2 className="text-sm font-extrabold">{day.label} の出発設定</h2>
               {checkoutSpot ? (
-                <p className="text-[11px] text-purple-700 font-semibold">
-                  🏨 宿泊地「{checkoutSpot.name}」と自動連動中
+                <p className="text-[11px] text-[var(--theme-accent-text)] font-semibold">
+                  宿泊地「{checkoutSpot.name}」と自動連動中
                 </p>
               ) : (
                 <p className="text-[11px] text-slate-500">
@@ -213,7 +213,7 @@ export default function DepartureSettingsModal({
                 type="button"
                 disabled={searching}
                 onClick={handleSearchLocation}
-                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-50 shrink-0"
+                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl liquid-btn-primary text-white text-xs font-bold disabled:opacity-50 shrink-0"
               >
                 <Search className="w-3.5 h-3.5" />
                 <span>{searching ? "検索中..." : "場所を検索"}</span>
@@ -227,8 +227,8 @@ export default function DepartureSettingsModal({
 
             {/* 複数候補が見つかった場合の選択リスト */}
             {candidates.length > 0 && (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 divide-y divide-emerald-100 max-h-48 overflow-y-auto">
-                <div className="px-3 py-1.5 text-[11px] font-bold text-emerald-900 bg-emerald-50">
+              <div className="rounded-2xl border border-[var(--theme-accent-border)] bg-[var(--theme-accent-soft)] divide-y divide-white/60 max-h-48 overflow-y-auto">
+                <div className="px-3 py-1.5 text-[11px] font-bold text-[var(--theme-accent-text)] bg-white/60">
                   候補が {candidates.length} 件見つかりました。正しい場所を選んでください：
                 </div>
                 {candidates.map((c, idx) => (
@@ -236,9 +236,9 @@ export default function DepartureSettingsModal({
                     key={idx}
                     type="button"
                     onClick={() => handleSelectCandidate(c)}
-                    className="w-full text-left px-3 py-2 hover:bg-emerald-100/60 flex items-start gap-2 transition"
+                    className="w-full text-left px-3 py-2 hover:bg-white/70 flex items-start gap-2 transition"
                   >
-                    <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <MapPin className="w-4 h-4 text-[var(--theme-accent-text)] shrink-0 mt-0.5" />
                     <div className="min-w-0">
                       <div className="text-xs font-extrabold text-slate-900">{c.name}</div>
                       <div className="text-[11px] text-slate-600 leading-snug">{c.address}</div>
@@ -255,14 +255,14 @@ export default function DepartureSettingsModal({
             )}
 
             {statusMsg && (
-              <p className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">
+              <p className="text-xs font-semibold text-[var(--theme-accent-text)] bg-[var(--theme-accent-soft)] border border-[var(--theme-accent-border)] rounded-xl px-3 py-2">
                 {statusMsg}
               </p>
             )}
 
             {lat !== null && lng !== null && !statusMsg && (
               <div className="text-[11px] text-slate-500 flex items-center gap-1">
-                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <Check className="w-3.5 h-3.5 text-[var(--theme-accent-text)]" />
                 <span>
                   座標設定済み ({lat.toFixed(4)}, {lng.toFixed(4)})
                 </span>
@@ -298,7 +298,7 @@ export default function DepartureSettingsModal({
             type="button"
             disabled={saving}
             onClick={handleSaveAndClose}
-            className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-extrabold hover:bg-slate-800 disabled:opacity-50"
+            className="px-5 py-2.5 rounded-xl liquid-btn-primary text-white text-xs font-extrabold disabled:opacity-50"
           >
             {saving ? "保存中..." : "保存して閉じる"}
           </button>
