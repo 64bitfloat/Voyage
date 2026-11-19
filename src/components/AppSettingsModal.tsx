@@ -167,44 +167,7 @@ export default function AppSettingsModal({
                     </div>
                   </label>
 
-                  {/* 選択肢2: 開発者モード */}
-                  <div
-                    className={`rounded-2xl p-3 border transition space-y-2.5 ${
-                      settings.mode === "developer"
-                        ? "bg-[var(--theme-accent-soft)] border-[var(--theme-accent)]"
-                        : "bg-white border-slate-200"
-                    }`}
-                  >
-                    <label className="flex items-center gap-2.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="ocrMode"
-                        checked={settings.mode === "developer"}
-                        onChange={() => handleSelectMode("developer")}
-                        className="accent-[var(--theme-accent)]"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                          <KeyRound className="w-3.5 h-3.5 text-[var(--theme-accent-text)]" />
-                          <span>開発者モード</span>
-                        </div>
-                      </div>
-                    </label>
-
-                    {settings.mode === "developer" && (
-                      <div className="pl-6">
-                        <input
-                          type="password"
-                          value={settings.developerPasscode}
-                          onChange={(e) => updateSettings({ developerPasscode: e.target.value })}
-                          placeholder="合言葉"
-                          className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 選択肢3: 自前Azureモード */}
+                  {/* 選択肢2: 自前Azureモード */}
                   <div
                     className={`rounded-2xl p-3 border transition space-y-2.5 ${
                       settings.mode === "custom_azure"
@@ -302,6 +265,43 @@ export default function AppSettingsModal({
                             </ol>
                           )}
                         </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 選択肢3: 開発者モード（一番下） */}
+                  <div
+                    className={`rounded-2xl p-3 border transition space-y-2.5 ${
+                      settings.mode === "developer"
+                        ? "bg-[var(--theme-accent-soft)] border-[var(--theme-accent)]"
+                        : "bg-white border-slate-200"
+                    }`}
+                  >
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="ocrMode"
+                        checked={settings.mode === "developer"}
+                        onChange={() => handleSelectMode("developer")}
+                        className="accent-[var(--theme-accent)]"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                          <KeyRound className="w-3.5 h-3.5 text-[var(--theme-accent-text)]" />
+                          <span>開発者モード</span>
+                        </div>
+                      </div>
+                    </label>
+
+                    {settings.mode === "developer" && (
+                      <div className="pl-6">
+                        <input
+                          type="password"
+                          value={settings.developerPasscode}
+                          onChange={(e) => updateSettings({ developerPasscode: e.target.value })}
+                          placeholder="合言葉"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]"
+                        />
                       </div>
                     )}
                   </div>
