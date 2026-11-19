@@ -424,6 +424,9 @@ function costFromDb(r: Record<string, unknown>, pNameMap: Map<string, string>): 
           name: String(it.name ?? ""),
           amount_jpy: Math.round(Number(it.amount_jpy ?? 0)),
           assignment: String(it.assignment ?? "split") || "split",
+          ...(Array.isArray(it.assignees)
+            ? { assignees: it.assignees.map((a) => String(a)) }
+            : {}),
         }))
       : [],
     receipts: Array.isArray(r.receipts)

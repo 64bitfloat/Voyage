@@ -101,7 +101,8 @@ export const CostLineItemRowSchema = z.object({
   id: IdSchema,
   name: z.string().max(200),
   amount_jpy: YenSchema.min(-10_000_000).max(100_000_000),
-  assignment: z.string().min(1).max(100),
+  assignment: z.string().min(1).max(500),
+  assignees: z.array(z.string().max(100)).max(50).optional(),
 });
 export type CostLineItemRow = z.infer<typeof CostLineItemRowSchema>;
 

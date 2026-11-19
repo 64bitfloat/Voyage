@@ -158,8 +158,10 @@ export const LineItemSchema = z.object({
   name: z.string(),
   /** 行の合計金額（整数円）。値引き・クーポンはマイナス可 */
   amount_jpy: YenSchema,
-  /** "split" または 参加者の full_name */
+  /** "split" または 参加者の full_name（複数人シェア時はカンマ区切りまたは代表表記） */
   assignment: z.string().min(1, "割り当てを指定してください"),
+  /** 複数人負担時の参加者 full_name 配列（省略時は assignment を使用） */
+  assignees: z.array(z.string()).optional(),
 });
 
 export const CostSchema = z.object({

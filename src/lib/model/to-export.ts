@@ -155,6 +155,7 @@ export function buildExportFromDoc(doc: TripDoc, now: Date = new Date()): Voyage
             name: it.name,
             amount_jpy: it.amount_jpy,
             assignment: it.assignment,
+            ...(it.assignees && it.assignees.length > 0 ? { assignees: it.assignees } : {}),
           })),
         };
       }),

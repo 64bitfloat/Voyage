@@ -159,10 +159,14 @@ export function renderExportMarkdown(exp: VoyageExport): string {
       lines.push("| 項目 | 金額 (JPY) | 負担 |");
       lines.push("| --- | --- | --- |");
       for (const it of items) {
+        const who =
+          it.assignees && it.assignees.length > 0
+            ? it.assignees.join("・")
+            : it.assignment === "split"
+              ? "割勘"
+              : it.assignment;
         lines.push(
-          `| ${(it.name || "（名称なし）").replace(/\|/g, "｜")} | ${it.amount_jpy.toLocaleString("ja-JP")}円 | ${
-            it.assignment === "split" ? "割勘" : it.assignment
-          } |`,
+          `| ${(it.name || "（名称なし）").replace(/\|/g, "｜")} | ${it.amount_jpy.toLocaleString("ja-JP")}円 | ${who} |`,
         );
       }
       if (remainder !== 0) {

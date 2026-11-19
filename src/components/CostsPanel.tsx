@@ -11,12 +11,12 @@ import {
   Camera,
   ScanText,
   Receipt,
-  ListChecks,
-  Users,
   ArrowRight,
   Loader2,
   X,
   ImagePlus,
+  Check,
+  Users,
 } from "lucide-react";
 import type {
   CostBreakdownRow,
@@ -29,7 +29,9 @@ import type {
 } from "@/lib/model/types";
 import {
   SPLIT_ASSIGNMENT,
+  buildItemAssignment,
   deriveBreakdownFromLineItems,
+  getLineItemAssignees,
   hasLineItems,
   normalizeCostBreakdown,
   summarizeLineItems,
@@ -47,8 +49,6 @@ interface CostsPanelProps {
   onUpsert: (cost: CostRow) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }
-
-type SplitMode = "all" | "items";
 
 interface ReceiptAnalysis {
   merchant: string | null;
@@ -72,7 +72,7 @@ const yen = (n: number) => `${n.toLocaleString("ja-JP")}円`;
 const inputCls =
   "w-full px-3 py-2 rounded-xl border border-slate-200 bg-white/80 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent-border)]";
 const smallInputCls =
-  "w-full px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent-border)]";
+  "w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent-border)]";
 
 function emptyDraft(participants: ParticipantRow[]): CostRow {
   const first = participants[0];
@@ -107,7 +107,8 @@ export default function CostsPanel({
   onDelete,
 }: CostsPanelProps) {
   const [draft, setDraft] = useState<CostRow>(() => emptyDraft(participants));
-  const [mode, setMode] = useState<SplitMode>("all");
+  // true = 完全割勘（全員均等・レシートからは総額のみ抽出）、false = 一部もしくは全部個別会計
+  const [isFullSplit, setIsFullSplit] = useState(true);
   const [manualBreakdownOpen, setManualBreakdownOpen] = useState(false);
   const [isEditingExisting, setIsEditingExisting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -118,8 +119,8 @@ export default function CostsPanel({
   const [ocrMsg, setOcrMsg] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const [suggestedTotal, setSuggestedTotal] = useState<number | null>(null);
   const [attachBusy, setAttachBusy] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const readAfterAttach = useRef(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const albumInputRef = useRef<HTMLInputElement>(null);
 
   const lineItems = useMemo(() => draft.line_items ?? [], [draft.line_items]);
   const receipts = draft.receipts ?? [];
@@ -150,7 +151,7 @@ export default function CostsPanel({
 
   function resetForm() {
     setDraft(emptyDraft(participants));
-    setMode("all");
+    setIsFullSplit(true);
     setManualBreakdownOpen(false);
     setIsEditingExisting(false);
     setOcrMsg(null);
@@ -163,14 +164,23 @@ export default function CostsPanel({
     copy.line_items = copy.line_items ?? [];
     copy.receipts = copy.receipts ?? [];
     setDraft(copy);
-    // 一度「項目ごとに分ける」で保存した費用は項目エディタで開く
-    setMode(hasLineItems(copy) ? "items" : "all");
-    setManualBreakdownOpen(!hasLineItems(copy) && copy.individual_breakdown.length > 0);
+    const hasItems = hasLineItems(copy);
+    const hasManual = !hasItems && copy.individual_breakdown.length > 0;
+    // 項目リストがある費用は個別会計モードで開く
+    setIsFullSplit(!hasItems);
+    setManualBreakdownOpen(hasManual);
     setIsEditingExisting(true);
     setOcrMsg(null);
     setSuggestedTotal(null);
     setSaveErr(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleToggleFullSplit(checked: boolean) {
+    setIsFullSplit(checked);
+    if (!checked && lineItems.length === 0 && receipts.length === 0) {
+      setDraft((d) => ({ ...d, line_items: [newLineItem()] }));
+    }
   }
 
   function handleSelectPayer(participantId: string) {
@@ -218,6 +228,18 @@ export default function CostsPanel({
     }));
   }
 
+  function toggleItemAssignee(item: CostLineItemRow, fullName: string) {
+    const current = getLineItemAssignees(item);
+    const next = current.includes(fullName)
+      ? current.filter((n) => n !== fullName)
+      : [...current, fullName];
+    updateItem(item.id, buildItemAssignment(next));
+  }
+
+  function setItemSplitAll(itemId: string) {
+    updateItem(itemId, { assignment: SPLIT_ASSIGNMENT, assignees: undefined });
+  }
+
   function addItem() {
     setDraft((d) => ({ ...d, line_items: [...(d.line_items ?? []), newLineItem()] }));
   }
@@ -226,7 +248,7 @@ export default function CostsPanel({
     setDraft((d) => ({ ...d, line_items: (d.line_items ?? []).filter((it) => it.id !== id) }));
   }
 
-  /* ---------------- レシート添付・読み取り ---------------- */
+  /* ---------------- レシート添付・自動読み取り ---------------- */
 
   async function handleAttachFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -244,33 +266,27 @@ export default function CostsPanel({
         return;
       }
       setDraft((d) => ({ ...d, receipts: [...(d.receipts ?? []), ...added] }));
-      if (readAfterAttach.current) await analyzeReceipt(added[0]);
+      // 貼った瞬間に自動で読み取る（先頭1枚）
+      await analyzeReceipt(added[0], { fullSplitOverride: isFullSplit, skipConfirm: true });
     } catch (e) {
       setOcrMsg({ kind: "error", text: e instanceof Error ? e.message : "画像の添付に失敗しました" });
     } finally {
-      readAfterAttach.current = false;
       setAttachBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
+      if (albumInputRef.current) albumInputRef.current.value = "";
     }
-  }
-
-  function openFilePicker(readAfter: boolean) {
-    readAfterAttach.current = readAfter;
-    const el = fileRef.current;
-    if (!el) return;
-    // 「撮影して読み取る」はカメラを直接起動、「添付」はアルバムからも選べるようにする
-    if (readAfter) el.setAttribute("capture", "environment");
-    else el.removeAttribute("capture");
-    el.multiple = !readAfter;
-    el.click();
   }
 
   function removeReceipt(id: string) {
     setDraft((d) => ({ ...d, receipts: (d.receipts ?? []).filter((r) => r.id !== id) }));
   }
 
-  async function analyzeReceipt(rc: CostReceiptRow) {
-    if (lineItems.some((it) => it.name.trim() || it.amount_jpy !== 0)) {
+  async function analyzeReceipt(
+    rc: CostReceiptRow,
+    opts: { fullSplitOverride?: boolean; skipConfirm?: boolean } = {},
+  ) {
+    const fullSplitMode = opts.fullSplitOverride ?? isFullSplit;
+    if (!fullSplitMode && !opts.skipConfirm && lineItems.some((it) => it.name.trim() || it.amount_jpy !== 0)) {
       if (!window.confirm("現在の項目リストを、レシートの読み取り結果で置き換えますか？")) return;
     }
     setOcrBusyId(rc.id);
@@ -287,41 +303,65 @@ export default function CostsPanel({
       if (!res.ok || !json) {
         setOcrMsg({
           kind: "error",
-          text: `${json?.error ?? "レシートの読み取りに失敗しました。"} 下の項目エディタで手入力できます。`,
+          text: `${json?.error ?? "レシートの読み取りに失敗しました。"} 下の欄で手入力できます。`,
         });
-        if (lineItems.length === 0) setDraft((d) => ({ ...d, line_items: [newLineItem()] }));
+        if (!fullSplitMode && lineItems.length === 0) {
+          setDraft((d) => ({ ...d, line_items: [newLineItem()] }));
+        }
         return;
       }
-      const items = json.items
-        .filter((it) => it.name || it.amount_jpy !== null)
-        .map((it) =>
-          newLineItem({
-            name: (it.quantity && it.quantity > 1 ? `${it.name} ×${it.quantity}` : it.name).slice(0, 200),
-            amount_jpy: it.amount_jpy ?? 0,
-          }),
-        );
-      setDraft((d) => ({
-        ...d,
-        title: d.title.trim() ? d.title : (json.merchant ?? d.title),
-        line_items: items.length > 0 ? items : [newLineItem()],
-        // 総額が未入力ならレシートの合計を初期値にする
-        total_paid_amount_jpy:
-          !d.total_paid_amount_jpy && json.total_jpy && json.total_jpy > 0 ? json.total_jpy : d.total_paid_amount_jpy,
-      }));
-      if (json.total_jpy && json.total_jpy > 0 && draft.total_paid_amount_jpy && json.total_jpy !== draft.total_paid_amount_jpy) {
-        setSuggestedTotal(json.total_jpy);
+
+      if (fullSplitMode) {
+        // 完全割勘のときは総額（および名目が空なら店名）のみ抽出する
+        setDraft((d) => ({
+          ...d,
+          title: d.title.trim() ? d.title : (json.merchant ?? d.title),
+          total_paid_amount_jpy:
+            json.total_jpy && json.total_jpy > 0 ? json.total_jpy : d.total_paid_amount_jpy,
+        }));
+        setOcrMsg({
+          kind: json.total_jpy ? "info" : "error",
+          text: json.total_jpy
+            ? `レシートから総額（${yen(json.total_jpy)}）を読み取りました。金額が異なる場合は下で修正してください。`
+            : "レシートから合計金額を読み取れませんでした。下の支払総額を手入力してください。",
+        });
+      } else {
+        // 個別会計を含むときは品目と価格・総額を抽出して表示
+        const items = json.items
+          .filter((it) => it.name || it.amount_jpy !== null)
+          .map((it) =>
+            newLineItem({
+              name: (it.quantity && it.quantity > 1 ? `${it.name} ×${it.quantity}` : it.name).slice(0, 200),
+              amount_jpy: it.amount_jpy ?? 0,
+            }),
+          );
+        setDraft((d) => ({
+          ...d,
+          title: d.title.trim() ? d.title : (json.merchant ?? d.title),
+          line_items: items.length > 0 ? items : [newLineItem()],
+          total_paid_amount_jpy:
+            !d.total_paid_amount_jpy && json.total_jpy && json.total_jpy > 0 ? json.total_jpy : d.total_paid_amount_jpy,
+        }));
+        if (
+          json.total_jpy &&
+          json.total_jpy > 0 &&
+          draft.total_paid_amount_jpy &&
+          json.total_jpy !== draft.total_paid_amount_jpy
+        ) {
+          setSuggestedTotal(json.total_jpy);
+        }
+        setOcrMsg({
+          kind: "info",
+          text:
+            items.length > 0
+              ? `${items.length}件の品目を読み取りました。金額の誤読や割り当て（割勘／誰の負担か）を確認・修正してから保存してください。`
+              : "品目を読み取れませんでした。下の項目エディタで手入力してください。",
+        });
       }
-      setOcrMsg({
-        kind: "info",
-        text:
-          items.length > 0
-            ? `${items.length}件の項目を読み取りました（下書き）。名称・金額・負担者を確認・修正してから保存してください。`
-            : "項目を読み取れませんでした。手入力で追加してください。",
-      });
     } catch (e) {
       setOcrMsg({
         kind: "error",
-        text: `${e instanceof Error ? e.message : "レシートの読み取りに失敗しました"}。下の項目エディタで手入力できます。`,
+        text: `${e instanceof Error ? e.message : "レシートの読み取りに失敗しました"}。下の欄で手入力できます。`,
       });
     } finally {
       setOcrBusyId(null);
@@ -338,7 +378,7 @@ export default function CostsPanel({
     try {
       const total = Math.round(Number(draft.total_paid_amount_jpy) || 0);
       let payload: CostRow;
-      if (mode === "items") {
+      if (!isFullSplit) {
         const items = lineItems
           .map((it) => ({ ...it, name: it.name.trim(), amount_jpy: Math.round(Number(it.amount_jpy) || 0) }))
           .filter((it) => it.name || it.amount_jpy !== 0);
@@ -367,29 +407,13 @@ export default function CostsPanel({
     }
   }
 
-  const assignmentOptions = (current: string) => {
-    const known = participants.some((p) => p.full_name === current);
-    return (
-      <>
-        <option value={SPLIT_ASSIGNMENT}>割勘</option>
-        {participants.map((p) => (
-          <option key={p.id} value={p.full_name}>
-            {p.full_name}
-            {p.nickname ? `（${p.nickname}）` : ""}
-          </option>
-        ))}
-        {current !== SPLIT_ASSIGNMENT && !known && <option value={current}>{current}（参加者にいません）</option>}
-      </>
-    );
-  };
-
   return (
     <div className="space-y-4">
       {/* 精算サマリー */}
       <SettlementCard settlement={settlement} participantsCount={participants.length} />
 
-      {/* 統合入力フォーム */}
-      <form onSubmit={handleSubmit} className="liquid-glass rounded-3xl p-4 space-y-3.5">
+      {/* 統合入力フォーム（①名目 → ②完全割勘/個別会計 → ③レシート貼付 → ④総額・品目調整 → ⑤その他情報） */}
+      <form onSubmit={handleSubmit} className="liquid-glass rounded-3xl p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
             <Wallet className="w-4 h-4 text-[var(--theme-accent-text)]" />
@@ -402,23 +426,20 @@ export default function CostsPanel({
           )}
         </div>
 
-        <p className="text-[11px] leading-relaxed text-slate-600 bg-[var(--theme-accent-soft)] border border-[var(--theme-accent-border)] rounded-xl px-2.5 py-1.5">
-          支払総額には「レジで実際に支払った総額」を入力してください。個人ごとの分（各自のドリンク等）は、支払者本人の分も含めて個人負担にします。残りは全員で割勘になります。
-        </p>
-
+        {/* STEP 1: 名目・カテゴリ */}
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-          <div className="sm:col-span-5">
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">名目 *</label>
+          <div className="sm:col-span-8">
+            <label className="block text-[11px] font-bold text-slate-600 mb-1">1. 名目 *</label>
             <input
               type="text"
               required
               value={draft.title}
               onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
-              placeholder="例: 食事 コース＋ドリンク"
+              placeholder="例: 夕食 居酒屋 / コンビニ（空のままレシートを貼ると店名が入ります）"
               className={inputCls}
             />
           </div>
-          <div className="sm:col-span-3">
+          <div className="sm:col-span-4">
             <label className="block text-[11px] font-bold text-slate-600 mb-1">カテゴリ</label>
             <select
               value={draft.category}
@@ -432,156 +453,89 @@ export default function CostsPanel({
               ))}
             </select>
           </div>
-          <div className="sm:col-span-4">
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">実際に支払った総額（円）*</label>
+        </div>
+
+        {/* STEP 2: 完全割勘か、一部もしくは全部個別会計か */}
+        <div className="space-y-1.5">
+          <label className="block text-[11px] font-bold text-slate-600">2. 会計の分け方</label>
+          <label
+            className={`flex items-start gap-2.5 rounded-2xl p-3 border cursor-pointer transition ${
+              isFullSplit
+                ? "bg-[var(--theme-accent-soft)] border-[var(--theme-accent-border)]"
+                : "bg-white/75 border-slate-200 hover:bg-white"
+            }`}
+          >
             <input
-              type="number"
-              required
-              min={1}
-              step={1}
-              value={draft.total_paid_amount_jpy || ""}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, total_paid_amount_jpy: Math.round(Number(e.target.value) || 0) }))
-              }
-              placeholder="例: 11500"
-              className={`${inputCls} font-mono font-bold`}
+              type="checkbox"
+              checked={isFullSplit}
+              onChange={(e) => handleToggleFullSplit(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-[var(--theme-accent)] rounded"
             />
-            {suggestedTotal !== null && suggestedTotal !== draft.total_paid_amount_jpy && (
-              <button
-                type="button"
-                onClick={() => {
-                  setDraft((d) => ({ ...d, total_paid_amount_jpy: suggestedTotal }));
-                  setSuggestedTotal(null);
-                }}
-                className="mt-1 text-[11px] font-bold text-[var(--theme-accent-text)] hover:underline"
-              >
-                レシートの合計 {yen(suggestedTotal)} を総額にする
-              </button>
-            )}
-          </div>
+            <div className="min-w-0">
+              <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-[var(--theme-accent-text)]" />
+                完全割勘にする（チェックを外すと一部・全部の個別会計ができます）
+              </div>
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                {isFullSplit
+                  ? "全員で均等割りします。レシートを貼ると「総額」だけを読み取って自動入力します。"
+                  : "レシートから「品目と金額」を読み取り、項目ごとに割勘にするか誰の負担か（複数人選択可）を設定できます。"}
+              </p>
+            </div>
+          </label>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">支払った参加者（本名）*</label>
-            <select
-              value={draft.payer_participant_id ?? ""}
-              onChange={(e) => handleSelectPayer(e.target.value)}
-              className={inputCls}
-            >
-              <option value="">-- 参加者を選択 --</option>
-              {participants.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.full_name}（{p.nickname}）
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">関連日程</label>
-            <select
-              value={draft.related_day_index ?? ""}
-              onChange={(e) =>
-                setDraft((d) => ({
-                  ...d,
-                  related_day_index: e.target.value === "" ? null : Number(e.target.value),
-                }))
-              }
-              className={inputCls}
-            >
-              <option value="">指定なし</option>
-              {days.map((d) => (
-                <option key={d.day_index} value={d.day_index}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">関連スポット</label>
-            <select
-              value={draft.related_spot_id ?? ""}
-              onChange={(e) => setDraft((d) => ({ ...d, related_spot_id: e.target.value || null }))}
-              className={inputCls}
-            >
-              <option value="">指定なし</option>
-              {spots.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* 費用の扱い: 全額割勘 / 項目ごとに分ける */}
-        <div>
-          <label className="block text-[11px] font-bold text-slate-600 mb-1">費用の分け方</label>
-          <div className="grid grid-cols-2 gap-2">
-            {(
-              [
-                { v: "all", label: "全額割勘", sub: "総額と支払者だけ", Icon: Users },
-                { v: "items", label: "項目ごとに分ける", sub: "レシート読み取り可", Icon: ListChecks },
-              ] as const
-            ).map(({ v, label, sub, Icon }) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => {
-                  setMode(v);
-                  if (v === "items" && lineItems.length === 0 && receipts.length === 0) {
-                    setDraft((d) => ({ ...d, line_items: [newLineItem()] }));
-                  }
-                }}
-                className={`rounded-2xl px-3 py-2.5 text-left border transition ${
-                  mode === v
-                    ? "bg-[var(--theme-accent)] border-[var(--theme-accent)] text-white shadow-[0_6px_16px_-6px_rgba(15,23,42,0.35)]"
-                    : "bg-white/70 border-slate-200 text-slate-700 hover:bg-white"
-                }`}
-              >
-                <div className="flex items-center gap-1.5 text-xs font-extrabold">
-                  <Icon className="w-3.5 h-3.5" />
-                  {label}
-                </div>
-                <div className={`text-[10px] mt-0.5 ${mode === v ? "text-white/80" : "text-slate-500"}`}>{sub}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* レシート添付 */}
-        <div className="rounded-2xl bg-white/60 border border-slate-200 p-3 space-y-2.5">
+        {/* STEP 3: レシート貼り付け（上部配置・貼ると自動読み取り） */}
+        <div className="rounded-2xl bg-white/70 border border-slate-200 p-3 space-y-2.5">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-              <Receipt className="w-3.5 h-3.5 text-[var(--theme-accent-text)]" />
-              レシート（{receipts.length}枚）
-            </span>
+            <div>
+              <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Receipt className="w-3.5 h-3.5 text-[var(--theme-accent-text)]" />
+                3. レシートを貼る（{receipts.length}枚）
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {isFullSplit
+                  ? "撮影・添付するとレシートから「合計金額」を自動で読み込みます。"
+                  : "撮影・添付するとレシートから「品目・価格・合計金額」を自動で読み込みます。"}
+              </p>
+            </div>
             <div className="flex items-center gap-1.5">
-              {mode === "items" && receipts.length === 0 && (
-                <button
-                  type="button"
-                  disabled={attachBusy || ocrBusyId !== null}
-                  onClick={() => openFilePicker(true)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl liquid-btn-primary text-white text-[11px] font-bold disabled:opacity-50"
-                >
-                  <Camera className="w-3.5 h-3.5" />
-                  撮影して読み取る
-                </button>
-              )}
               <button
                 type="button"
-                disabled={attachBusy || receipts.length >= 10}
-                onClick={() => openFilePicker(false)}
+                disabled={attachBusy || ocrBusyId !== null || receipts.length >= 10}
+                onClick={() => cameraInputRef.current?.click()}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl liquid-btn-primary text-white text-[11px] font-bold disabled:opacity-50"
+              >
+                {attachBusy || ocrBusyId !== null ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Camera className="w-3.5 h-3.5" />
+                )}
+                撮影して読み込む
+              </button>
+              <button
+                type="button"
+                disabled={attachBusy || ocrBusyId !== null || receipts.length >= 10}
+                onClick={() => albumInputRef.current?.click()}
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-[11px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
-                {attachBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
-                添付
+                <ImagePlus className="w-3.5 h-3.5" />
+                画像を選ぶ
               </button>
             </div>
             <input
-              ref={fileRef}
+              ref={cameraInputRef}
               type="file"
               accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => handleAttachFiles(e.target.files)}
+            />
+            <input
+              ref={albumInputRef}
+              type="file"
+              accept="image/*"
+              multiple
               className="hidden"
               onChange={(e) => handleAttachFiles(e.target.files)}
             />
@@ -603,32 +557,28 @@ export default function CostsPanel({
                       <X className="w-3 h-3" />
                     </button>
                   </div>
-                  {mode === "items" && (
-                    <button
-                      type="button"
-                      disabled={ocrBusyId !== null}
-                      onClick={() => analyzeReceipt(rc)}
-                      className="w-full inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg liquid-btn-primary text-white text-[10px] font-bold disabled:opacity-50"
-                    >
-                      {ocrBusyId === rc.id ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <ScanText className="w-3 h-3" />
-                      )}
-                      {ocrBusyId === rc.id ? "読み取り中…" : "レシートから読み取る"}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    disabled={ocrBusyId !== null}
+                    onClick={() => analyzeReceipt(rc)}
+                    className="w-full inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 text-[10px] font-bold hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {ocrBusyId === rc.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <ScanText className="w-3 h-3" />
+                    )}
+                    {ocrBusyId === rc.id ? "読み取り中…" : "再読み取り"}
+                  </button>
                 </div>
               ))}
             </div>
           )}
 
-          {mode === "items" && (
-            <p className="text-[10px] text-slate-500 flex items-start gap-1">
-              <Info className="w-3 h-3 mt-px shrink-0" />
-              レシート画像は読み取りのため外部サービス（Microsoft Azure）へ送信されます。
-            </p>
-          )}
+          <p className="text-[10px] text-slate-500 flex items-start gap-1">
+            <Info className="w-3 h-3 mt-px shrink-0" />
+            レシート画像は読み取りのため外部サービス（Microsoft Azure）へ送信されます。
+          </p>
 
           {ocrMsg && (
             <div
@@ -648,246 +598,376 @@ export default function CostsPanel({
           )}
         </div>
 
-        {/* 項目エディタ */}
-        {mode === "items" && (
-          <div className="rounded-2xl bg-white/60 border border-slate-200 p-3 space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-slate-800">項目と負担の割り当て</span>
-              <button
-                type="button"
-                onClick={addItem}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-700 hover:bg-slate-50"
-              >
-                <Plus className="w-3 h-3" />
-                項目を追加
-              </button>
+        {/* STEP 4: 総額・支払者（＋個別会計のときは品目リスト・割り当て） */}
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                4. 実際に支払った総額（円・整数）*
+              </label>
+              <input
+                type="number"
+                required
+                min={1}
+                step={1}
+                value={draft.total_paid_amount_jpy || ""}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, total_paid_amount_jpy: Math.round(Number(e.target.value) || 0) }))
+                }
+                placeholder="例: 11500"
+                className={`${inputCls} font-mono font-bold`}
+              />
+              {suggestedTotal !== null && suggestedTotal !== draft.total_paid_amount_jpy && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft((d) => ({ ...d, total_paid_amount_jpy: suggestedTotal }));
+                    setSuggestedTotal(null);
+                  }}
+                  className="mt-1 text-[11px] font-bold text-[var(--theme-accent-text)] hover:underline"
+                >
+                  レシートの合計 {yen(suggestedTotal)} を総額にする
+                </button>
+              )}
             </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">支払った参加者（本名）*</label>
+              <select
+                value={draft.payer_participant_id ?? ""}
+                onChange={(e) => handleSelectPayer(e.target.value)}
+                className={inputCls}
+              >
+                <option value="">-- 参加者を選択 --</option>
+                {participants.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.full_name}（{p.nickname}）
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-            {lineItems.length === 0 && (
-              <p className="text-[11px] text-slate-500">
-                項目がありません。レシートから読み取るか、「項目を追加」で手入力してください。
+          {/* 個別会計モード: 品目と負担者（複数人選択可） */}
+          {!isFullSplit && (
+            <div className="rounded-2xl bg-white/60 border border-slate-200 p-3 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <span className="text-xs font-bold text-slate-800">品目ごとの割り当て（複数人選択可）</span>
+                  <p className="text-[10px] text-slate-500">
+                    品目名や金額に誤読がある場合は直接書き換えて修正できます。誰の支払いかをタップしてください。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-700 hover:bg-slate-50 shrink-0"
+                >
+                  <Plus className="w-3 h-3" />
+                  品目を追加
+                </button>
+              </div>
+
+              {lineItems.length === 0 && (
+                <p className="text-[11px] text-slate-500">
+                  品目がありません。上でレシートを貼るか、「品目を追加」で手入力してください。
+                </p>
+              )}
+
+              <div className="space-y-2">
+                {lineItems.map((it) => {
+                  const selected = getLineItemAssignees(it);
+                  const isSplitAll = selected.length === 0;
+                  const perPerson =
+                    selected.length > 1 ? Math.round((it.amount_jpy || 0) / selected.length) : null;
+                  return (
+                    <div
+                      key={it.id}
+                      className="rounded-xl bg-white/85 border border-slate-200 p-2.5 space-y-2"
+                    >
+                      <div className="grid grid-cols-12 gap-1.5 items-center">
+                        <input
+                          type="text"
+                          value={it.name}
+                          onChange={(e) => updateItem(it.id, { name: e.target.value })}
+                          placeholder="品目名（例: ドリンクA）"
+                          className={`${smallInputCls} col-span-7`}
+                        />
+                        <div className="col-span-4 relative">
+                          <input
+                            type="number"
+                            step={1}
+                            value={Number.isFinite(it.amount_jpy) && it.amount_jpy !== 0 ? it.amount_jpy : ""}
+                            onChange={(e) =>
+                              updateItem(it.id, { amount_jpy: Math.round(Number(e.target.value) || 0) })
+                            }
+                            placeholder="金額"
+                            className={`${smallInputCls} font-mono pr-6 ${
+                              it.amount_jpy < 0 ? "text-amber-700" : ""
+                            }`}
+                          />
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 pointer-events-none">
+                            円
+                          </span>
+                        </div>
+                        <div className="col-span-1 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => removeItem(it.id)}
+                            className="p-1 text-slate-400 hover:text-red-600"
+                            title="品目を削除"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 負担割り当てチップ: 割勘 or 参加者複数選択 */}
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setItemSplitAll(it.id)}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold border transition ${
+                            isSplitAll
+                              ? "bg-[var(--theme-accent)] border-[var(--theme-accent)] text-white"
+                              : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                          }`}
+                        >
+                          {isSplitAll && <Check className="w-3 h-3" />}
+                          全員で割勘
+                        </button>
+                        {participants.map((p) => {
+                          const active = selected.includes(p.full_name);
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => toggleItemAssignee(it, p.full_name)}
+                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold border transition ${
+                                active
+                                  ? "bg-[var(--theme-accent)] border-[var(--theme-accent)] text-white"
+                                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                              }`}
+                            >
+                              {active && <Check className="w-3 h-3" />}
+                              {p.nickname || p.full_name}
+                            </button>
+                          );
+                        })}
+                        {perPerson !== null && (
+                          <span className="ml-auto text-[10px] text-slate-500 font-mono">
+                            {selected.length}人で負担（約{yen(perPerson)}/人）
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 常時表示の集計 */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
+                <SummaryCell label="品目の合計" value={yen(summary.itemsTotal)} />
+                <SummaryCell label="個人負担の合計" value={yen(summary.personalTotal)} strong />
+                <SummaryCell label="残額（税・端数など）" value={yen(summary.remainder)} />
+                <SummaryCell label="割勘対象の合計" value={yen(summary.sharedTotal)} strong />
+              </div>
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                残額 = 総額 − 品目の合計。項目化されていない税・端数などは自動的に共通分（全員で割勘）になります。値引き・クーポンはマイナス金額で入力できます。
               </p>
-            )}
 
-            <div className="space-y-1.5">
-              {lineItems.map((it) => (
-                <div key={it.id} className="grid grid-cols-12 gap-1.5 items-center">
-                  <input
-                    type="text"
-                    value={it.name}
-                    onChange={(e) => updateItem(it.id, { name: e.target.value })}
-                    placeholder="項目名（例: ドリンクA）"
-                    className={`${smallInputCls} col-span-5`}
-                  />
-                  <input
-                    type="number"
-                    step={1}
-                    value={Number.isFinite(it.amount_jpy) && it.amount_jpy !== 0 ? it.amount_jpy : ""}
-                    onChange={(e) => updateItem(it.id, { amount_jpy: Math.round(Number(e.target.value) || 0) })}
-                    placeholder="金額"
-                    className={`${smallInputCls} col-span-3 font-mono ${it.amount_jpy < 0 ? "text-amber-700" : ""}`}
-                  />
-                  <select
-                    value={it.assignment}
-                    onChange={(e) => updateItem(it.id, { assignment: e.target.value })}
-                    className={`${smallInputCls} col-span-3 ${
-                      it.assignment === SPLIT_ASSIGNMENT ? "" : "font-bold text-[var(--theme-accent-text)]"
-                    }`}
-                  >
-                    {assignmentOptions(it.assignment)}
-                  </select>
+              {derivedBreakdown.length > 0 && (
+                <div className="rounded-xl bg-[var(--theme-accent-soft)] border border-[var(--theme-accent-border)] px-2.5 py-1.5 text-[11px] text-[var(--theme-accent-text)]">
+                  <span className="font-bold">個人別内訳（自動計算）: </span>
+                  {derivedBreakdown.map((b) => `${b.consumer_full_name} ${yen(b.amount_jpy)}`).join(" / ")}
+                </div>
+              )}
+
+              {summary.allSplit && (
+                <div className="flex items-start gap-1.5 text-[11px] text-slate-600 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl">
+                  <Info className="w-3.5 h-3.5 shrink-0 mt-px" />
+                  <span>全項目が「全員で割勘」なので、実質的に完全割勘と同じ結果になります。</span>
+                </div>
+              )}
+
+              {summary.personalExceedsTotal && (
+                <div className="flex items-start gap-1.5 text-xs text-red-700 font-bold bg-red-50 border border-red-200 px-2.5 py-1.5 rounded-xl">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>
+                    個人負担の合計（{yen(summary.personalTotal)}）が支払総額（{yen(draft.total_paid_amount_jpy)}
+                    ）を超えています。
+                  </span>
+                </div>
+              )}
+
+              {summary.largeMismatch && (
+                <div className="flex items-start gap-1.5 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-xl">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                  <span>
+                    品目の合計と総額の差が {yen(Math.abs(summary.remainder))} あります。読み取り漏れや誤読の可能性があります（保存はできます）。
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 完全割勘モード時の従来方式（手入力の個人別内訳・折りたたみ） */}
+          {isFullSplit && manualBreakdownOpen && (
+            <div className="rounded-2xl bg-white/60 border border-slate-200 p-3 space-y-2.5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[11px] font-mono text-slate-600">
+                  個別計: {yen(breakdownSum)} / 割勘対象:{" "}
+                  <strong className={sharedAmount < 0 ? "text-red-600" : "text-[var(--theme-accent-text)]"}>
+                    {yen(sharedAmount)}
+                  </strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleAddBreakdownRow}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold hover:bg-slate-50"
+                >
+                  <Plus className="w-3 h-3" />
+                  個人別内訳を追加
+                </button>
+              </div>
+              {draft.individual_breakdown.map((b, idx) => (
+                <div key={idx} className="grid grid-cols-12 gap-1.5 items-center">
+                  <div className="col-span-5">
+                    <select
+                      value={b.consumer_participant_id ?? ""}
+                      onChange={(e) => {
+                        const p = participants.find((x) => x.id === e.target.value);
+                        handleUpdateBreakdownRow(idx, {
+                          consumer_participant_id: p?.id ?? null,
+                          consumer_full_name: p?.full_name ?? "",
+                        });
+                      }}
+                      className={smallInputCls}
+                    >
+                      <option value="">対象者を選択</option>
+                      {participants.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.full_name}（{p.nickname}）
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-3">
+                    <input
+                      type="number"
+                      step={1}
+                      value={b.amount_jpy || ""}
+                      onChange={(e) =>
+                        handleUpdateBreakdownRow(idx, { amount_jpy: Math.round(Number(e.target.value) || 0) })
+                      }
+                      placeholder="金額(円)"
+                      className={`${smallInputCls} font-mono`}
+                    />
+                  </div>
+                  <div className="col-span-3">
+                    <input
+                      type="text"
+                      value={b.note}
+                      onChange={(e) => handleUpdateBreakdownRow(idx, { note: e.target.value })}
+                      placeholder="例: ドリンクA"
+                      className={smallInputCls}
+                    />
+                  </div>
                   <div className="col-span-1 flex justify-end">
                     <button
                       type="button"
-                      onClick={() => removeItem(it.id)}
+                      onClick={() => handleRemoveBreakdownRow(idx)}
                       className="p-1 text-slate-400 hover:text-red-600"
-                      title="項目を削除"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
               ))}
-            </div>
-
-            {/* 常時表示の集計 */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
-              <SummaryCell label="項目の合計" value={yen(summary.itemsTotal)} />
-              <SummaryCell label="個人負担の合計" value={yen(summary.personalTotal)} strong />
-              <SummaryCell label="残額（税・端数など）" value={yen(summary.remainder)} />
-              <SummaryCell label="割勘対象の合計" value={yen(summary.sharedTotal)} strong />
-            </div>
-            <p className="text-[10px] text-slate-500 leading-relaxed">
-              残額 = 総額 − 項目の合計。項目化されていない税・端数などは自動的に共通分（割勘の対象）になります。値引き・クーポンはマイナス金額の項目として入力できます。
-            </p>
-
-            {derivedBreakdown.length > 0 && (
-              <div className="rounded-xl bg-[var(--theme-accent-soft)] border border-[var(--theme-accent-border)] px-2.5 py-1.5 text-[11px] text-[var(--theme-accent-text)]">
-                <span className="font-bold">個人別内訳（自動導出）: </span>
-                {derivedBreakdown.map((b) => `${b.consumer_full_name} ${yen(b.amount_jpy)}`).join(" / ")}
-              </div>
-            )}
-
-            {summary.allSplit && (
-              <div className="flex items-start gap-1.5 text-[11px] text-slate-600 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl">
-                <Info className="w-3.5 h-3.5 shrink-0 mt-px" />
-                <span>全項目が「割勘」なので、実質的に全額割勘と同じ結果になります。</span>
-              </div>
-            )}
-
-            {summary.personalExceedsTotal && (
-              <div className="flex items-start gap-1.5 text-xs text-red-700 font-bold bg-red-50 border border-red-200 px-2.5 py-1.5 rounded-xl">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>
-                  個人負担の合計（{yen(summary.personalTotal)}）が支払総額（{yen(draft.total_paid_amount_jpy)}
-                  ）を超えています。
-                </span>
-              </div>
-            )}
-
-            {summary.largeMismatch && (
-              <div className="flex items-start gap-1.5 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-xl">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
-                <span>
-                  項目の合計と総額の差が {yen(Math.abs(summary.remainder))} あります。読み取り漏れや誤読の可能性があります（保存はできます）。
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 全額割勘モード: 従来方式の個人別内訳（任意） */}
-        {mode === "all" && (
-          <div className="rounded-2xl bg-white/60 border border-slate-200 p-3 space-y-2.5">
-            <label className="flex items-center gap-2 text-[11px] font-bold text-slate-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={manualBreakdownOpen}
-                onChange={(e) => setManualBreakdownOpen(e.target.checked)}
-                className="accent-[var(--theme-accent)]"
-              />
-              個人別内訳を直接入力する（従来方式・空なら全額が割勘対象）
-            </label>
-
-            {manualBreakdownOpen && (
-              <>
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <span className="text-[11px] font-mono text-slate-600">
-                    個別計: {yen(breakdownSum)} / 割勘対象:{" "}
-                    <strong className={sharedAmount < 0 ? "text-red-600" : "text-[var(--theme-accent-text)]"}>
-                      {yen(sharedAmount)}
-                    </strong>
+              {exceedsTotal && (
+                <div className="flex items-center gap-1.5 text-xs text-red-700 font-bold bg-red-50 border border-red-200 px-2.5 py-1.5 rounded-xl">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>
+                    個人別内訳の合計（{yen(breakdownSum)}）が支払総額（{yen(draft.total_paid_amount_jpy)}）を超えています！
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleAddBreakdownRow}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold hover:bg-slate-50"
-                  >
-                    <Plus className="w-3 h-3" />
-                    個人別内訳を追加
-                  </button>
                 </div>
+              )}
+              {payerMissingInBreakdown && (
+                <div className="flex items-center gap-1.5 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-xl">
+                  <Info className="w-4 h-4 shrink-0" />
+                  <span>
+                    支払者本人（{draft.payer_full_name}）の内訳が含まれていません。
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
-                {draft.individual_breakdown.map((b, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-1.5 items-center">
-                    <div className="col-span-5">
-                      <select
-                        value={b.consumer_participant_id ?? ""}
-                        onChange={(e) => {
-                          const p = participants.find((x) => x.id === e.target.value);
-                          handleUpdateBreakdownRow(idx, {
-                            consumer_participant_id: p?.id ?? null,
-                            consumer_full_name: p?.full_name ?? "",
-                          });
-                        }}
-                        className={smallInputCls}
-                      >
-                        <option value="">対象者を選択</option>
-                        {participants.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.full_name}（{p.nickname}）
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-span-3">
-                      <input
-                        type="number"
-                        step={1}
-                        value={b.amount_jpy || ""}
-                        onChange={(e) =>
-                          handleUpdateBreakdownRow(idx, { amount_jpy: Math.round(Number(e.target.value) || 0) })
-                        }
-                        placeholder="金額(円)"
-                        className={`${smallInputCls} font-mono`}
-                      />
-                    </div>
-                    <div className="col-span-3">
-                      <input
-                        type="text"
-                        value={b.note}
-                        onChange={(e) => handleUpdateBreakdownRow(idx, { note: e.target.value })}
-                        placeholder="例: ドリンクA"
-                        className={smallInputCls}
-                      />
-                    </div>
-                    <div className="col-span-1 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveBreakdownRow(idx)}
-                        className="p-1 text-slate-400 hover:text-red-600"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
+        {/* STEP 5: その他情報（関連日程・関連スポット・メモ） */}
+        <div className="space-y-2.5 pt-2 border-t border-slate-200/80">
+          <div className="text-[11px] font-bold text-slate-600">5. その他情報（任意）</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 mb-1">関連日程</label>
+              <select
+                value={draft.related_day_index ?? ""}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    related_day_index: e.target.value === "" ? null : Number(e.target.value),
+                  }))
+                }
+                className={inputCls}
+              >
+                <option value="">指定なし</option>
+                {days.map((d) => (
+                  <option key={d.day_index} value={d.day_index}>
+                    {d.label}
+                  </option>
                 ))}
-
-                {exceedsTotal && (
-                  <div className="flex items-center gap-1.5 text-xs text-red-700 font-bold bg-red-50 border border-red-200 px-2.5 py-1.5 rounded-xl">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span>
-                      個人別内訳の合計（{yen(breakdownSum)}）が支払総額（{yen(draft.total_paid_amount_jpy)}）を超えています！
-                    </span>
-                  </div>
-                )}
-
-                {payerMissingInBreakdown && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-xl">
-                    <Info className="w-4 h-4 shrink-0" />
-                    <span>
-                      支払者本人（{draft.payer_full_name}）の内訳が含まれていません。本人のドリンク代等がある場合は省略せず追加してください。
-                    </span>
-                  </div>
-                )}
-              </>
-            )}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 mb-1">関連スポット</label>
+              <select
+                value={draft.related_spot_id ?? ""}
+                onChange={(e) => setDraft((d) => ({ ...d, related_spot_id: e.target.value || null }))}
+                className={inputCls}
+              >
+                <option value="">指定なし</option>
+                {spots.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-        )}
 
-        {saveErr && (
-          <div className="flex items-center gap-1.5 text-xs text-red-700 font-bold bg-red-50 border border-red-200 px-2.5 py-1.5 rounded-xl">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>{saveErr}</span>
+          {saveErr && (
+            <div className="flex items-center gap-1.5 text-xs text-red-700 font-bold bg-red-50 border border-red-200 px-2.5 py-1.5 rounded-xl">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{saveErr}</span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between gap-2">
+            <input
+              type="text"
+              value={draft.note}
+              onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
+              placeholder="メモ（例: コース各5000円＋ドリンク）"
+              className={`${inputCls} flex-1`}
+            />
+            <button
+              type="submit"
+              disabled={busy || attachBusy || ocrBusyId !== null}
+              className="inline-flex items-center gap-1 px-4 py-2 rounded-xl liquid-btn-primary text-white text-xs font-bold disabled:opacity-50 shrink-0"
+            >
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              {isEditingExisting ? "更新する" : "費用を保存"}
+            </button>
           </div>
-        )}
-
-        <div className="flex items-center justify-between gap-2">
-          <input
-            type="text"
-            value={draft.note}
-            onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))}
-            placeholder="メモ（例: コース各5000円＋ドリンク）"
-            className={`${inputCls} flex-1`}
-          />
-          <button
-            type="submit"
-            disabled={busy || attachBusy || ocrBusyId !== null}
-            className="inline-flex items-center gap-1 px-4 py-2 rounded-xl liquid-btn-primary text-white text-xs font-bold disabled:opacity-50 shrink-0"
-          >
-            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-            {isEditingExisting ? "更新する" : "費用を保存"}
-          </button>
         </div>
       </form>
 
@@ -911,7 +991,7 @@ export default function CostsPanel({
                   </span>
                   {items.length > 0 && (
                     <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)]">
-                      項目別 {items.length}件
+                      個別・品目別 {items.length}件
                     </span>
                   )}
                   {(c.receipts?.length ?? 0) > 0 && (

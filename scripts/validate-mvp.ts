@@ -6,7 +6,13 @@
  */
 import assert from "node:assert/strict";
 import { initialDays, newSpot, type CostRow, type TripDoc } from "../src/lib/model/types";
-import { SPLIT_ASSIGNMENT, normalizeCostBreakdown, summarizeLineItems } from "../src/lib/costs/line-items";
+import {
+  SPLIT_ASSIGNMENT,
+  buildItemAssignment,
+  deriveBreakdownFromLineItems,
+  normalizeCostBreakdown,
+  summarizeLineItems,
+} from "../src/lib/costs/line-items";
 import { computeSettlement } from "../src/lib/settlement";
 import { computeDaySchedule } from "../src/lib/schedule/compute";
 import { buildExportFromDoc } from "../src/lib/model/to-export";
@@ -256,6 +262,22 @@ assert.match(md, /10,000円/); // 割勘対象額
     costs: [{ ...itemized, line_items: [{ ...itemized.line_items![1], assignment: "知らない人" }] }],
   });
   assert.ok(validateExport(bad).issues.some((i) => i.code === "line_item_assignee_not_participant"));
+
+  // 複数人選択（2人でシェア）の均等割り・端数配分検証
+  const sharedItem = {
+    id: "7a1c2a3e-8b4d-4c5e-9f60-1a2b3c4d5e65",
+    name: "おつまみシェア",
+    amount_jpy: 1001,
+    ...buildItemAssignment(["山田太郎", "佐藤花子"]),
+  };
+  const sharedBreakdown = deriveBreakdownFromLineItems([sharedItem], participants);
+  assert.deepEqual(
+    sharedBreakdown.map((b) => [b.consumer_full_name, b.amount_jpy]),
+    [
+      ["山田太郎", 501],
+      ["佐藤花子", 500],
+    ],
+  );
 }
 
 // 4. 日本語テキストからの営業時間・定休日自動抽出 & 休業日・営業時間外アラート検証（下條温泉郷 コスモスの湯の例）

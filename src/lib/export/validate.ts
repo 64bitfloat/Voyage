@@ -251,11 +251,25 @@ function checkCosts(data: VoyageExport, issues: ExportIssue[]) {
         issues.push({ severity: "info", code: "payer_not_in_breakdown", path: `${path}.individual_breakdown`, message: `費用「${c.title}」の内訳に支払者「${c.payer_full_name}」本人の分がありません。本人の個別分（ドリンク等）がある場合は省略せず入れてください` });
     }
 
-    // 項目ごとの割り当て（line_items）: assignment は "split" か参加者の本名のみ
+    // 項目ごとの割り当て（line_items）: assignment は "split" か参加者の本名（複数人の場合は assignees）
     const items = c.line_items ?? [];
     items.forEach((it, j) => {
-      if (it.assignment !== "split" && !names.has(normalizeName(it.assignment)))
-        issues.push({ severity: "warning", code: "line_item_assignee_not_participant", path: `${path}.line_items[${j}].assignment`, message: `費用「${c.title}」の項目「${it.name}」の負担者「${it.assignment}」が参加者一覧にいません` });
+      const targets =
+        it.assignees && it.assignees.length > 0
+          ? it.assignees.filter((a) => a && a !== "split")
+          : it.assignment !== "split"
+            ? [it.assignment]
+            : [];
+      for (const who of targets) {
+        if (!names.has(normalizeName(who))) {
+          issues.push({
+            severity: "warning",
+            code: "line_item_assignee_not_participant",
+            path: `${path}.line_items[${j}].assignment`,
+            message: `費用「${c.title}」の項目「${it.name}」の負担者「${who}」が参加者一覧にいません`,
+          });
+        }
+      }
     });
     if (items.length > 0) {
       const itemsTotal = items.reduce((a, it) => a + it.amount_jpy, 0);
