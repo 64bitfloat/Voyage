@@ -78,6 +78,13 @@
   }
 }
 
+html,
+body {
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  max-width: 100%;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
@@ -134,6 +141,15 @@ body {
 
 .liquid-btn-primary:hover {
   background: var(--theme-accent-hover);
+}
+
+/* どの画角の端末でも入力欄が親枠からはみ出さないようにする */
+input,
+select,
+textarea {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 /* iPhone/Android のブラウザで input / select をタップした際に勝手にズーム拡大して戻らなくなるのを防止 */

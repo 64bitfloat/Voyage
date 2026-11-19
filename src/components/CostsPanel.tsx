@@ -542,7 +542,7 @@ export default function CostsPanel({
           </div>
 
           {receipts.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="flex flex-wrap gap-2 pb-1">
               {receipts.map((rc) => (
                 <div key={rc.id} className="shrink-0 w-28 space-y-1">
                   <div className="relative h-28 rounded-xl overflow-hidden border border-slate-200 bg-slate-100">

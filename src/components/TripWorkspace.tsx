@@ -963,7 +963,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               });
               notifyChange();
             }}
-            className="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-none w-full max-w-xs truncate"
+            className="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-[var(--theme-accent)] focus:outline-none w-full max-w-xs truncate"
           />
           <div className="text-[11px] text-slate-500 flex items-center flex-wrap gap-1.5 mt-0.5">
             <Calendar className="w-3 h-3 text-[var(--theme-accent-text)] shrink-0" />
@@ -1007,7 +1007,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       {/* 日程セグメントピルタブ（タイムスケジュール・マップ表示時のみ、Day 1 / Day 2 ... だけをシンプルに横並び） */}
       {(mainTab === "itinerary" || mainTab === "map") && (
         <div className="bg-white/45 backdrop-blur-xl px-3.5 py-2 border-b border-white/60 shrink-0 z-10 space-y-1.5">
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <div className="flex items-center flex-wrap gap-1.5">
             {doc.days.map((d) => {
               const active = d.day_index === activeDay.day_index;
               const dayConflicts = schedule.byDay.get(d.day_index)?.conflicts.length ?? 0;
@@ -1126,7 +1126,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           />
         </div>
       ) : mainTab === "pool" ? (
-        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 max-w-3xl w-full mx-auto">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-x-none touch-pan-y px-3 py-3 space-y-4 max-w-3xl w-full mx-auto">
           <div className="rounded-2xl liquid-glass p-3.5 space-y-2.5">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
@@ -1191,7 +1191,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           </div>
         </div>
       ) : mainTab === "itinerary" ? (
-        <div className="flex-1 overflow-y-auto px-3 py-2.5 space-y-3 max-w-3xl w-full mx-auto">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-x-none touch-pan-y px-3 py-2.5 space-y-3 max-w-3xl w-full mx-auto">
           {/* 出発設定は普段は1行のコンパクトサマリーバーにして、タイムスケジュールを広く表示する */}
           <div className="flex items-center justify-between gap-2 rounded-2xl liquid-glass px-3 py-2.5">
             <button
@@ -1433,7 +1433,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-3.5 py-4 max-w-3xl w-full mx-auto">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-x-none touch-pan-y px-3.5 py-4 max-w-3xl w-full mx-auto">
           {mainTab === "costs" && (
             <CostsPanel
               tripId={tripId}
@@ -1466,7 +1466,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
               />
 
               {/* 全体メモ（構造化できない補足のみ） */}
-              <div className="rounded-2xl bg-white border border-slate-200 p-4 space-y-2 shadow-2xs">
+              <div className="liquid-glass rounded-3xl p-4 space-y-2">
                 <label className="block text-xs font-extrabold text-slate-800">
                   全体メモ（自由記述・構造化できない補足のみ）
                 </label>
@@ -1485,7 +1485,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                     notifyChange();
                   }}
                   placeholder="集合時の注意事項など"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"
+                  className="w-full min-w-0 px-3 py-2 rounded-xl border border-slate-200 bg-white/85 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent-border)]"
                 />
               </div>
             </div>
