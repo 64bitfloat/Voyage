@@ -152,6 +152,11 @@ textarea {
   box-sizing: border-box;
 }
 
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 /* iPhone/Android のブラウザで input / select をタップした際に勝手にズーム拡大して戻らなくなるのを防止 */
 @media (max-width: 768px) {
   input,

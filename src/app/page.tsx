@@ -157,7 +157,7 @@ export default function HomePage() {
     <main
       data-theme={theme}
       suppressHydrationWarning
-      className="min-h-dvh liquid-canvas text-slate-900 flex flex-col justify-between p-5"
+      className="min-h-dvh liquid-canvas text-slate-900 flex flex-col justify-between p-4 sm:p-5 overflow-x-hidden"
     >
       <div className="mx-auto w-full max-w-md space-y-5 pt-4">
         {/* ブランドヘッダー */}
@@ -234,9 +234,9 @@ export default function HomePage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700">開始日</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5 min-w-0">
+              <label className="block text-xs font-bold text-slate-700">開始日（任意）</label>
               <input
                 type="date"
                 value={startDate}
@@ -247,17 +247,17 @@ export default function HomePage() {
                     setEndDate(val);
                   }
                 }}
-                className="w-full px-3 py-2 rounded-2xl border border-slate-200/90 bg-white/80 text-xs"
+                className="w-full min-w-0 appearance-none px-3.5 py-2.5 min-h-[42px] rounded-2xl border border-slate-200/90 bg-white/80 text-xs text-slate-800"
               />
             </div>
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700">終了日</label>
+            <div className="space-y-1.5 min-w-0">
+              <label className="block text-xs font-bold text-slate-700">終了日（任意）</label>
               <input
                 type="date"
                 min={startDate || undefined}
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 rounded-2xl border border-slate-200/90 bg-white/80 text-xs"
+                className="w-full min-w-0 appearance-none px-3.5 py-2.5 min-h-[42px] rounded-2xl border border-slate-200/90 bg-white/80 text-xs text-slate-800"
               />
             </div>
           </div>
