@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Users, Plus, Trash2, AlertCircle } from "lucide-react";
+import { Users, Plus, Trash2 } from "lucide-react";
 import type { ParticipantRow } from "@/lib/model/types";
 
 interface ParticipantsPanelProps {
@@ -21,25 +21,24 @@ export default function ParticipantsPanel({
   onUpsert,
   onDelete,
 }: ParticipantsPanelProps) {
-  const [fullName, setFullName] = useState("");
-  const [nickname, setNickname] = useState("");
+  const [name, setName] = useState("");
   const [role, setRole] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
-    if (!fullName.trim() && !nickname.trim()) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
     setBusy(true);
     try {
       await onUpsert({
         id: crypto.randomUUID(),
-        full_name: fullName.trim(),
-        nickname: nickname.trim(),
+        full_name: trimmed,
+        nickname: trimmed,
         role: role.trim(),
         sort_order: participants.length,
       });
-      setFullName("");
-      setNickname("");
+      setName("");
       setRole("");
     } finally {
       setBusy(false);
@@ -48,14 +47,6 @@ export default function ParticipantsPanel({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl bg-[var(--theme-accent-soft)] border border-[var(--theme-accent-border)] p-3 flex items-start gap-2.5 text-xs text-slate-800">
-        <AlertCircle className="w-4 h-4 text-[var(--theme-accent-text)] shrink-0 mt-0.5" />
-        <div className="min-w-0">
-          <span className="font-bold text-[var(--theme-accent-text)]">参加者登録のポイント：</span>
-          ニックネームだけでなく、<strong>本名（フルネーム）</strong>もあわせて入力してください（費用・精算の支払者や持ち物の担当者の管理に使われます）。
-        </div>
-      </div>
-
       {/* 新規追加フォーム */}
       <form onSubmit={handleAdd} className="liquid-glass rounded-3xl p-4 space-y-3">
         <h3 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
@@ -63,30 +54,17 @@ export default function ParticipantsPanel({
           <span>参加者を追加</span>
         </h3>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div className="min-w-0">
             <label className="block text-[11px] font-bold text-slate-700 mb-1">
-              本名（フルネーム）*
+              名前 *
             </label>
             <input
               type="text"
               required
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="例: 山田太郎"
-              className={inputCls}
-            />
-          </div>
-          <div className="min-w-0">
-            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-              ニックネーム（表示名）*
-            </label>
-            <input
-              type="text"
-              required
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              placeholder="例: たろう"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="例: 山田太郎 / たろう"
               className={inputCls}
             />
           </div>
@@ -116,11 +94,11 @@ export default function ParticipantsPanel({
         </div>
       </form>
 
-      {/* 一覧（スマホでも文字がはみ出ないレスポンシブ2段レイアウト／PC・タブレットは横並び） */}
+      {/* 一覧 */}
       <div className="space-y-2">
         {participants.length === 0 ? (
           <div className="liquid-glass rounded-2xl border-dashed p-6 text-center text-xs text-slate-500">
-            まだ参加者が登録されていません。まずメンバーの本名とニックネームを登録してください。
+            まだ参加者が登録されていません。まずメンバーの名前を登録してください。
           </div>
         ) : (
           participants.map((p, idx) => (
@@ -135,13 +113,14 @@ export default function ParticipantsPanel({
                 <div className="flex-1 min-w-0">
                   <input
                     type="text"
-                    defaultValue={p.full_name}
+                    defaultValue={p.full_name || p.nickname}
                     onBlur={(e) => {
-                      if (e.target.value !== p.full_name) {
-                        void onUpsert({ ...p, full_name: e.target.value.trim() });
+                      const nextName = e.target.value.trim();
+                      if (nextName && nextName !== p.full_name) {
+                        void onUpsert({ ...p, full_name: nextName, nickname: nextName });
                       }
                     }}
-                    placeholder="本名（フルネーム）"
+                    placeholder="名前"
                     className={`${inlineInputCls} font-bold`}
                   />
                 </div>
@@ -155,18 +134,7 @@ export default function ParticipantsPanel({
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 sm:flex gap-2 sm:items-center min-w-0 pl-8 sm:pl-0">
-                <input
-                  type="text"
-                  defaultValue={p.nickname}
-                  onBlur={(e) => {
-                    if (e.target.value !== p.nickname) {
-                      void onUpsert({ ...p, nickname: e.target.value.trim() });
-                    }
-                  }}
-                  placeholder="ニックネーム"
-                  className={`${inlineInputCls} sm:w-32`}
-                />
+              <div className="flex items-center min-w-0 pl-8 sm:pl-0">
                 <input
                   type="text"
                   defaultValue={p.role}
@@ -175,8 +143,8 @@ export default function ParticipantsPanel({
                       void onUpsert({ ...p, role: e.target.value.trim() });
                     }
                   }}
-                  placeholder="役割"
-                  className={`${inlineInputCls} sm:w-32`}
+                  placeholder="役割（任意）"
+                  className={`${inlineInputCls} sm:w-40`}
                 />
               </div>
 

@@ -61,11 +61,14 @@ export function buildExportFromDoc(doc: TripDoc, now: Date = new Date()): Voyage
             check_out: primaryLodging.check_out,
           }
         : null,
-      participants: doc.participants.map((p) => ({
-        full_name: p.full_name,
-        nickname: p.nickname,
-        role: p.role,
-      })),
+      participants: doc.participants.map((p) => {
+        const name = p.full_name || p.nickname;
+        return {
+          full_name: name,
+          nickname: p.nickname || name,
+          role: p.role,
+        };
+      }),
       days: exportDays.map((d) => {
         const daySpots = spotsOfDay(doc.spots, d.day_index);
         const daySched = byDay.get(d.day_index);

@@ -72,10 +72,10 @@ export function renderExportMarkdown(exp: VoyageExport): string {
   lines.push(`## 参加者（${t.participants.length}名）`);
   lines.push("");
   if (t.participants.length > 0) {
-    lines.push("| 本名 | ニックネーム | 役割 |");
-    lines.push("| --- | --- | --- |");
+    lines.push("| 名前 | 役割 |");
+    lines.push("| --- | --- |");
     for (const p of t.participants) {
-      lines.push(`| ${p.full_name || "（未入力）"} | ${p.nickname || "-"} | ${p.role || "-"} |`);
+      lines.push(`| ${p.full_name || p.nickname || "（未入力）"} | ${p.role || "-"} |`);
     }
   } else {
     lines.push("_未登録_");
@@ -124,7 +124,7 @@ export function renderExportMarkdown(exp: VoyageExport): string {
   if (t.costs.length === 0) {
     lines.push("_未登録_");
   } else {
-    lines.push("| 名目 | 区分 | 支払総額 (JPY) | 支払者（本名） | 個人別内訳 | 割勘対象額 |");
+    lines.push("| 名目 | 区分 | 支払総額 (JPY) | 支払者 | 個人別内訳 | 割勘対象額 |");
     lines.push("| --- | --- | --- | --- | --- | --- |");
     for (const c of t.costs) {
       const bdSum = c.individual_breakdown.reduce((acc, b) => acc + b.amount_jpy, 0);
@@ -182,7 +182,7 @@ export function renderExportMarkdown(exp: VoyageExport): string {
   if (t.belongings.length === 0) {
     lines.push("_未登録_");
   } else {
-    lines.push("| 名称 | 必要 | 準備済 | 担当者（本名） | メモ |");
+    lines.push("| 名称 | 必要 | 準備済 | 担当者 | メモ |");
     lines.push("| --- | --- | --- | --- | --- |");
     for (const b of t.belongings) {
       lines.push(

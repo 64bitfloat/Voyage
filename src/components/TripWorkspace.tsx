@@ -1725,7 +1725,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                       },
                       Icon: Users,
                       title: `参加者 (${doc.participants.length})`,
-                      sub: "メンバー本名・ニックネーム",
+                      sub: "参加メンバーの登録・役割",
                     },
                     {
                       active: mainTab === "retro",

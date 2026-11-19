@@ -161,8 +161,7 @@ function checkRequiredFields(data: VoyageExport, issues: ExportIssue[]) {
   if (t.participants.length === 0) missing("trip.participants", "参加者が1人も登録されていません");
   t.participants.forEach((p, i) => {
     const who = p.nickname || `${i + 1}人目`;
-    if (!p.full_name.trim()) missing(`trip.participants[${i}].full_name`, `参加者「${who}」の本名（フルネーム）が未入力です`);
-    if (!p.nickname.trim()) missing(`trip.participants[${i}].nickname`, `参加者「${p.full_name || i + 1 + "人目"}」のニックネームが未入力です`);
+    if (!p.full_name.trim()) missing(`trip.participants[${i}].full_name`, `参加者「${who}」の名前が未入力です`);
   });
 
   // スポット
@@ -232,7 +231,7 @@ function checkCosts(data: VoyageExport, issues: ExportIssue[]) {
     const path = `trip.costs[${i}]`;
 
     if (c.payer_full_name?.trim() && !names.has(normalizeName(c.payer_full_name)))
-      issues.push({ severity: "warning", code: "payer_not_participant", path: `${path}.payer_full_name`, message: `費用「${c.title}」の支払者「${c.payer_full_name}」が参加者一覧（本名）にいません` });
+      issues.push({ severity: "warning", code: "payer_not_participant", path: `${path}.payer_full_name`, message: `費用「${c.title}」の支払者「${c.payer_full_name}」が参加者一覧にいません` });
 
     c.individual_breakdown.forEach((b, j) => {
       if (!b.consumer_full_name.trim())

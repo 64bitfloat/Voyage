@@ -701,7 +701,7 @@ export default function CostsPanel({
               )}
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-1">支払った参加者（本名）*</label>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">支払った参加者 *</label>
               <select
                 value={draft.payer_participant_id ?? ""}
                 onChange={(e) => handleSelectPayer(e.target.value)}
@@ -710,7 +710,7 @@ export default function CostsPanel({
                 <option value="">-- 参加者を選択 --</option>
                 {participants.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.full_name}（{p.nickname}）
+                    {p.full_name || p.nickname}
                   </option>
                 ))}
               </select>
@@ -819,7 +819,7 @@ export default function CostsPanel({
                               }`}
                             >
                               {active && <Check className="w-3 h-3" />}
-                              {p.nickname || p.full_name}
+                              {p.full_name || p.nickname}
                             </button>
                           );
                         })}
@@ -916,7 +916,7 @@ export default function CostsPanel({
                       <option value="">対象者を選択</option>
                       {participants.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.full_name}（{p.nickname}）
+                          {p.full_name || p.nickname}
                         </option>
                       ))}
                     </select>
@@ -1525,7 +1525,7 @@ function CostInspectModal({
                       key={b.participant_id}
                       className="rounded-xl bg-white/80 border border-slate-200 px-2.5 py-1.5 flex items-center justify-between text-xs"
                     >
-                      <span className="font-bold text-slate-700 truncate">{b.nickname || b.full_name}</span>
+                      <span className="font-bold text-slate-700 truncate">{b.full_name || b.nickname}</span>
                       <span className="font-mono font-extrabold text-[var(--theme-accent-text)] shrink-0">
                         {yen(b.owed)}
                       </span>

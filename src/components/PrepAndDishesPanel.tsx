@@ -115,7 +115,7 @@ export default function PrepAndDishesPanel({
                 <option value="">担当者なし</option>
                 {participants.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.full_name}（{p.nickname}）
+                    {p.full_name || p.nickname}
                   </option>
                 ))}
               </select>
