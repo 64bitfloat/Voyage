@@ -168,10 +168,40 @@ function readStoredTrip(base: TripDoc): TripDoc {
 }
 
 export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
+  // トップページからIDと合言葉を入力して入室した場合のみ発行されるワンタイム入室チケットを検証
+  // 部屋URL (/trip/[tripId]) を直接開いた場合は必ずトップページ (/) へリダイレクトし、内容は一切表示しない
+  const [authorizedEntry] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const raw = sessionStorage.getItem(`voyage:entry_ticket:${initialDoc.trip.id}`);
+      if (!raw) return false;
+      const ts = Number(raw);
+      return Number.isFinite(ts) && Date.now() - ts < 30_000;
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    if (!authorizedEntry) {
+      window.location.replace("/");
+      return;
+    }
+    const timer = setTimeout(() => {
+      try {
+        sessionStorage.removeItem(`voyage:entry_ticket:${initialDoc.trip.id}`);
+      } catch {
+        // ignore
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [authorizedEntry, initialDoc.trip.id]);
+
   const [doc, setDoc] = useState<TripDoc>(() => readStoredTrip(normalizeDays(initialDoc)));
 
   // localStorage と「最近のしおり一覧」、およびサーバー側ストアへ自動保存・同期する
   useEffect(() => {
+    if (!authorizedEntry) return;
     try {
       if (window.location.hash.includes("s=")) {
         window.history.replaceState(null, "", window.location.pathname);
@@ -202,7 +232,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       }).catch(() => {});
     }, 350);
     return () => clearTimeout(timer);
-  }, [doc]);
+  }, [doc, authorizedEntry]);
 
   const [mainTab, setMainTab] = useState<MainTab>("itinerary");
   const [activeDayIdx, setActiveDayIdx] = useState<number>(1);
@@ -935,6 +965,10 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
       body: JSON.stringify({ id }),
     });
     notifyChange();
+  }
+
+  if (!authorizedEntry) {
+    return null;
   }
 
   return (

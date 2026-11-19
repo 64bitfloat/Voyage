@@ -51,7 +51,7 @@ export function getOcrModeLabel(mode: ReceiptOcrMode): string {
     case "tesseract":
       return "ブラウザ内OCR（Tesseract・標準）";
     case "developer":
-      return "開発者モード（合言葉・高精度AI）";
+      return "開発者モード";
     case "custom_azure":
       return "自前Azureモード（個人のAzure枠）";
   }

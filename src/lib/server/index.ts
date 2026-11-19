@@ -72,18 +72,18 @@ function readCookie(req: Request, name: string): string | null {
 }
 
 /**
- * 合言葉ロックが設定されている旅行への書き込みAPIアクセスをサーバー側で検証する。
- * 合言葉未設定の旅行はそのまま許可し、既存のログイン不要UXを維持する。
+ * 部屋IDと合言葉による認証（HttpOnly署名Cookie）をサーバー側で検証する。
+ * 認証されていない場合は閲覧・書き込みともに403で拒否する。
  */
 export async function requireTripWriteAccess(
   req: Request,
   tripId: string,
 ): Promise<NextResponse | null> {
   const doc = await getStore().getTripDoc(tripId);
-  if (!doc || !doc.trip.has_passcode) return null;
+  if (!doc) return jsonError(404, "部屋が見つかりません");
   const token = readCookie(req, getUnlockCookieName(tripId));
   if (!verifyUnlockToken(tripId, token)) {
-    return jsonError(403, "合言葉の認証が必要です");
+    return jsonError(403, "部屋IDと合言葉の認証が必要です");
   }
   return null;
 }

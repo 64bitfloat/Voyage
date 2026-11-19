@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   Compass,
   MapPin,
@@ -13,6 +12,7 @@ import {
   Calendar,
   Trash2,
   LogIn,
+  Check,
 } from "lucide-react";
 
 interface RecentTripItem {
@@ -44,10 +44,13 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // 部屋ID・共有URLで合流するフォーム用
+  // 部屋ID・合言葉で入室するフォーム用
   const [joinInput, setJoinInput] = useState("");
   const [joinPasscode, setJoinPasscode] = useState("");
+  const [joinBusy, setJoinBusy] = useState(false);
   const [joinErr, setJoinErr] = useState<string | null>(null);
+  const [selectedRecentTitle, setSelectedRecentTitle] = useState<string | null>(null);
+  const joinPasscodeRef = useRef<HTMLInputElement>(null);
 
   const [recentTrips, setRecentTrips] = useState<RecentTripItem[]>(() => {
     if (typeof window === "undefined") return [];
@@ -69,11 +72,20 @@ export default function HomePage() {
     }
   }
 
+  function handleSelectRecentTrip(t: RecentTripItem) {
+    setJoinInput(t.id);
+    setSelectedRecentTitle(t.title);
+    setJoinErr(null);
+    setTimeout(() => {
+      joinPasscodeRef.current?.focus();
+    }, 50);
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
-    if (passcode && !/^\d{4}$/.test(passcode)) {
-      setErr("合言葉は4桁の数字で入力してください（空欄ならロックなし）");
+    if (!/^\d{4}$/.test(passcode)) {
+      setErr("4桁の合言葉（数字）を設定してください");
       return;
     }
     setBusy(true);
@@ -86,7 +98,7 @@ export default function HomePage() {
           title: title.trim(),
           start_date: startDate || null,
           end_date: endDate || null,
-          passcode: passcode || null,
+          passcode,
         }),
       });
       const json = (await res.json()) as { id?: string; error?: string };
@@ -94,14 +106,8 @@ export default function HomePage() {
         setErr(json.error ?? "作成に失敗しました");
         return;
       }
-      if (passcode) {
-        try {
-          localStorage.setItem(`voyage:unlocked:${json.id}`, "1");
-        } catch {
-          // ignore
-        }
-      }
       try {
+        sessionStorage.setItem(`voyage:entry_ticket:${json.id}`, String(Date.now()));
         localStorage.setItem(
           `voyage:init:${json.id}`,
           JSON.stringify({
@@ -126,31 +132,36 @@ export default function HomePage() {
     setJoinErr(null);
     const match = joinInput.trim().match(UUID_REGEX);
     if (!match) {
-      setJoinErr("有効な部屋ID（UUID）または共有URLを入力してください");
+      setJoinErr("有効な部屋ID（UUID）を入力してください");
+      return;
+    }
+    if (!/^\d{4}$/.test(joinPasscode)) {
+      setJoinErr("4桁の合言葉（数字）を入力してください");
       return;
     }
     const targetId = match[0].toLowerCase();
-    if (joinPasscode) {
-      if (!/^\d{4}$/.test(joinPasscode)) {
-        setJoinErr("合言葉は4桁の数字で入力してください");
-        return;
-      }
+    setJoinBusy(true);
+    try {
       const res = await fetch(`/api/trips/${targetId}/passcode`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ passcode: joinPasscode }),
       });
       if (!res.ok) {
-        setJoinErr("合言葉（パスコード）が一致しません");
+        setJoinErr("部屋IDまたは合言葉（パスコード）が一致しません");
         return;
       }
       try {
-        localStorage.setItem(`voyage:unlocked:${targetId}`, "1");
+        sessionStorage.setItem(`voyage:entry_ticket:${targetId}`, String(Date.now()));
       } catch {
         // ignore
       }
+      router.push(`/trip/${targetId}`);
+    } catch {
+      setJoinErr("通信エラーが発生しました");
+    } finally {
+      setJoinBusy(false);
     }
-    router.push(`/trip/${targetId}`);
   }
 
   return (
@@ -167,49 +178,134 @@ export default function HomePage() {
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight">Voyage</h1>
           <p className="text-xs text-slate-600 leading-relaxed">
-            友人と部屋ID・URLでリアルタイム共同編集できる旅のしおり。
+            部屋IDと合言葉で友人とリアルタイム共同編集できる旅のしおり。
             <br />
             タイムスケジュール・地図・移動時間の自動計算までまとめて管理できます。
           </p>
         </div>
 
-        {/* 最近開いた・作成したしおり一覧 */}
+        {/* 既存の部屋（しおり）に入るカード（ID＋合言葉が必須） */}
+        <form
+          onSubmit={handleJoinRoom}
+          className="rounded-3xl liquid-glass-strong p-5 space-y-3.5"
+        >
+          <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+            <LogIn className="w-4 h-4 text-[var(--theme-accent-text)]" />
+            <span>しおり（部屋）に入る</span>
+          </h2>
+
+          {selectedRecentTitle && (
+            <div className="rounded-xl bg-[var(--theme-accent-soft)] border border-[var(--theme-accent-border)] px-3 py-2 text-[11px] font-bold text-[var(--theme-accent-text)] flex items-center gap-1.5">
+              <Check className="w-3.5 h-3.5 shrink-0" />
+              <span>「{selectedRecentTitle}」の部屋IDをセットしました。合言葉を入力してください。</span>
+            </div>
+          )}
+
+          <div className="space-y-2.5">
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700">部屋ID *</label>
+              <input
+                type="text"
+                required
+                value={joinInput}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const extracted = val.match(UUID_REGEX);
+                  setJoinInput(extracted && val.includes("\n") ? extracted[0].toLowerCase() : val);
+                  setSelectedRecentTitle(null);
+                }}
+                placeholder="共有された部屋IDを貼り付け"
+                className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200/90 bg-white/85 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                <Lock className="w-3.5 h-3.5 text-[var(--theme-accent-text)]" />
+                <span>4桁の合言葉（パスコード） *</span>
+              </label>
+              <input
+                ref={joinPasscodeRef}
+                type="password"
+                inputMode="numeric"
+                required
+                maxLength={4}
+                value={joinPasscode}
+                onChange={(e) => setJoinPasscode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                placeholder="4桁の数字を入力"
+                className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200/90 bg-white/85 text-xs font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]"
+              />
+            </div>
+          </div>
+
+          {joinErr && <p className="text-xs text-[#b84242] font-semibold">{joinErr}</p>}
+
+          <button
+            type="submit"
+            disabled={joinBusy}
+            className="w-full py-3 rounded-2xl liquid-btn-primary text-white text-xs font-extrabold disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+          >
+            <LogIn className="w-4 h-4" />
+            <span>{joinBusy ? "認証中..." : "IDと合言葉で部屋に入る"}</span>
+          </button>
+        </form>
+
+        {/* 最近開いた・作成したしおり一覧（タップすると上のフォームに部屋IDを自動セット） */}
         <div suppressHydrationWarning>
           {recentTrips.length > 0 && (
             <section className="rounded-3xl liquid-glass p-4 space-y-2.5">
-              <h2 className="text-xs font-extrabold text-slate-700">
-                最近編集したしおり（続きから再開）
-              </h2>
+              <div>
+                <h2 className="text-xs font-extrabold text-slate-700">
+                  最近編集したしおり（タップで部屋IDをセット）
+                </h2>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  選択後、上の欄で4桁の合言葉を入力すると入室できます
+                </p>
+              </div>
               <div className="space-y-2">
-                {recentTrips.map((t) => (
-                  <div
-                    key={t.id}
-                    className="flex items-center justify-between gap-2 rounded-2xl border border-white/80 bg-white/60 hover:bg-white/90 px-3.5 py-2.5 transition"
-                  >
-                    <Link href={`/trip/${t.id}`} className="flex-1 min-w-0">
-                      <div className="text-sm font-extrabold text-slate-900 truncate">
-                        {t.title}
-                      </div>
-                      {t.start_date && (
-                        <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                          <Calendar className="w-3 h-3 text-[var(--theme-accent-text)]" />
-                          <span>
-                            {t.start_date}
-                            {t.end_date ? ` 〜 ${t.end_date}` : ""}
-                          </span>
-                        </div>
-                      )}
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveRecent(t.id)}
-                      className="p-1.5 text-slate-400 hover:text-[#b84242] rounded-lg"
-                      title="履歴から外す"
+                {recentTrips.map((t) => {
+                  const isSelected = joinInput.trim().toLowerCase() === t.id.toLowerCase();
+                  return (
+                    <div
+                      key={t.id}
+                      className={`flex items-center justify-between gap-2 rounded-2xl border px-3.5 py-2.5 transition ${
+                        isSelected
+                          ? "border-[var(--theme-accent)] bg-[var(--theme-accent-soft)]"
+                          : "border-white/80 bg-white/60 hover:bg-white/90"
+                      }`}
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
+                      <button
+                        type="button"
+                        onClick={() => handleSelectRecentTrip(t)}
+                        className="flex-1 min-w-0 text-left"
+                      >
+                        <div className="text-sm font-extrabold text-slate-900 truncate">
+                          {t.title}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono truncate">
+                          ID: {t.id}
+                        </div>
+                        {t.start_date && (
+                          <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                            <Calendar className="w-3 h-3 text-[var(--theme-accent-text)]" />
+                            <span>
+                              {t.start_date}
+                              {t.end_date ? ` 〜 ${t.end_date}` : ""}
+                            </span>
+                          </div>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRecent(t.id)}
+                        className="p-1.5 text-slate-400 hover:text-[#b84242] rounded-lg shrink-0"
+                        title="履歴から外す"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </section>
           )}
@@ -218,7 +314,7 @@ export default function HomePage() {
         {/* 新規しおり作成カード */}
         <form
           onSubmit={handleCreate}
-          className="rounded-3xl liquid-glass-strong p-5 space-y-4"
+          className="rounded-3xl liquid-glass p-5 space-y-4"
         >
           <h2 className="text-sm font-extrabold text-slate-900">新しい旅行しおり（部屋）を作成</h2>
 
@@ -264,18 +360,22 @@ export default function HomePage() {
 
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
-              <Lock className="w-3.5 h-3.5 text-slate-400" />
-              <span>4桁の合言葉（パスコード・任意）</span>
+              <Lock className="w-3.5 h-3.5 text-[var(--theme-accent-text)]" />
+              <span>4桁の合言葉（パスコード・必須） *</span>
             </label>
             <input
               type="text"
               inputMode="numeric"
+              required
               maxLength={4}
               value={passcode}
               onChange={(e) => setPasscode(e.target.value.replace(/\D/g, "").slice(0, 4))}
-              placeholder="未入力ならロックなし（例: 1234）"
-              className="w-full px-3.5 py-2 rounded-2xl border border-slate-200/90 bg-white/80 text-xs font-mono tracking-widest"
+              placeholder="4桁の数字を設定（例: 1234）"
+              className="w-full px-3.5 py-2 rounded-2xl border border-slate-200/90 bg-white/80 text-xs font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]"
             />
+            <p className="text-[10px] text-slate-500">
+              ※次回入室時や同行者への共有時にこの4桁の合言葉が必要になります。
+            </p>
           </div>
 
           {err && <p className="text-xs text-[#b84242] font-semibold">{err}</p>}
@@ -283,48 +383,10 @@ export default function HomePage() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full py-3 rounded-2xl liquid-btn-primary text-white text-sm font-extrabold disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+            className="w-full py-3 rounded-2xl bg-slate-900/90 hover:bg-slate-900 text-white text-sm font-extrabold disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
           >
             <span>{busy ? "作成中..." : "新しい旅行しおりを作成"}</span>
             <ArrowRight className="w-4 h-4" />
-          </button>
-        </form>
-
-        {/* 既存の部屋（しおり）に入るカード */}
-        <form
-          onSubmit={handleJoinRoom}
-          className="rounded-3xl liquid-glass p-5 space-y-3"
-        >
-          <h2 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-            <LogIn className="w-4 h-4 text-[var(--theme-accent-text)]" />
-            <span>友人が作成したしおり（部屋）に入る</span>
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <input
-              type="text"
-              required
-              value={joinInput}
-              onChange={(e) => setJoinInput(e.target.value)}
-              placeholder="部屋ID または 共有URLを貼り付け"
-              className="sm:col-span-2 px-3 py-2 rounded-xl border border-slate-200/90 bg-white/80 text-xs font-mono"
-            />
-            <input
-              type="text"
-              inputMode="numeric"
-              maxLength={4}
-              value={joinPasscode}
-              onChange={(e) => setJoinPasscode(e.target.value.replace(/\D/g, "").slice(0, 4))}
-              placeholder="合言葉(任意)"
-              className="px-3 py-2 rounded-xl border border-slate-200/90 bg-white/80 text-xs font-mono tracking-widest"
-            />
-          </div>
-          {joinErr && <p className="text-xs text-[#b84242] font-semibold">{joinErr}</p>}
-          <button
-            type="submit"
-            className="w-full py-2.5 rounded-xl bg-slate-900/90 text-white text-xs font-extrabold hover:bg-slate-900 inline-flex items-center justify-center gap-1.5"
-          >
-            <LogIn className="w-3.5 h-3.5" />
-            <span>この部屋に入って共同編集する</span>
           </button>
         </form>
 

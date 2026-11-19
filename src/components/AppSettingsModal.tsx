@@ -123,14 +123,14 @@ export default function AppSettingsModal({
                 </button>
               </div>
 
-              <p className="text-[11px] text-slate-600 leading-relaxed">
-                {settings.mode === "tesseract" &&
-                  "初期設定：お使いの端末（ブラウザ内）で文字認識を行うため、回数制限なしで誰でも無料で使えます（認識精度は簡易的です）。"}
-                {settings.mode === "developer" &&
-                  "合言葉を使用して開発者のAzure AI枠（Document Intelligence）で高精度に読み取ります。"}
-                {settings.mode === "custom_azure" &&
-                  "ご自身で取得したAzure Document Intelligence（月500枚無料枠など）のキーで高精度に読み取ります。"}
-              </p>
+              {settings.mode !== "developer" && (
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  {settings.mode === "tesseract" &&
+                    "初期設定：お使いの端末（ブラウザ内）で文字認識を行うため、回数制限なしで誰でも無料で使えます（認識精度は簡易的です）。"}
+                  {settings.mode === "custom_azure" &&
+                    "ご自身で取得したAzure Document Intelligence（月500枚無料枠など）のキーで高精度に読み取ります。"}
+                </p>
+              )}
 
               {/* 「変更」を押したときに展開される選択肢 */}
               {isChangingOcr && (
@@ -167,7 +167,7 @@ export default function AppSettingsModal({
                     </div>
                   </label>
 
-                  {/* 選択肢2: 開発者モード（合言葉） */}
+                  {/* 選択肢2: 開発者モード */}
                   <div
                     className={`rounded-2xl p-3 border transition space-y-2.5 ${
                       settings.mode === "developer"
@@ -175,40 +175,31 @@ export default function AppSettingsModal({
                         : "bg-white border-slate-200"
                     }`}
                   >
-                    <label className="flex items-start gap-2.5 cursor-pointer">
+                    <label className="flex items-center gap-2.5 cursor-pointer">
                       <input
                         type="radio"
                         name="ocrMode"
                         checked={settings.mode === "developer"}
                         onChange={() => handleSelectMode("developer")}
-                        className="mt-0.5 accent-[var(--theme-accent)]"
+                        className="accent-[var(--theme-accent)]"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
                           <KeyRound className="w-3.5 h-3.5 text-[var(--theme-accent-text)]" />
-                          <span>開発者モード（合言葉を使用）</span>
+                          <span>開発者モード</span>
                         </div>
-                        <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
-                          合言葉を知っている方のみ、開発者のAzure AI枠を使って高精度なレシート読み取りを行えます。
-                        </p>
                       </div>
                     </label>
 
                     {settings.mode === "developer" && (
-                      <div className="pl-6 space-y-1.5">
-                        <label className="block text-[11px] font-bold text-slate-700">
-                          開発者モードの合言葉
-                        </label>
+                      <div className="pl-6">
                         <input
                           type="password"
                           value={settings.developerPasscode}
                           onChange={(e) => updateSettings({ developerPasscode: e.target.value })}
-                          placeholder="合言葉を入力してください"
+                          placeholder="合言葉"
                           className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]"
                         />
-                        <p className="text-[10px] text-slate-500">
-                          ※合言葉はこの端末のブラウザ内に記憶されます。一致しない場合は読み取り時にエラーとなります。
-                        </p>
                       </div>
                     )}
                   </div>

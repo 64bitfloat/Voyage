@@ -22,9 +22,7 @@ import {
 
 export const PasscodeInput = z
   .string()
-  .regex(/^\d{4}$/, "4桁の数字で入力してください")
-  .nullable()
-  .optional();
+  .regex(/^\d{4}$/, "4桁の数字で入力してください");
 
 export const TripRowSchema = z.object({
   id: IdSchema,

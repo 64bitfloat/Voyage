@@ -4,9 +4,11 @@ import { getStore, isUuid, jsonError, parseBody, requireTripWriteAccess, serverE
 
 type Ctx = { params: Promise<{ tripId: string }> };
 
-export async function GET(_req: Request, { params }: Ctx) {
+export async function GET(req: Request, { params }: Ctx) {
   const { tripId } = await params;
   if (!isUuid(tripId)) return jsonError(404, "旅行が見つかりません");
+  const denied = await requireTripWriteAccess(req, tripId);
+  if (denied) return denied;
   try {
     const doc = await getStore().getTripDoc(tripId);
     if (!doc) return jsonError(404, "旅行が見つかりません");
