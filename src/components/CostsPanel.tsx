@@ -17,6 +17,10 @@ import {
   ImagePlus,
   Check,
   Users,
+  Eye,
+  ZoomIn,
+  Calendar,
+  MapPin,
 } from "lucide-react";
 import type {
   CostBreakdownRow,
@@ -113,6 +117,8 @@ export default function CostsPanel({
   const [isEditingExisting, setIsEditingExisting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  // 読み取り専用の詳細確認ビュー用
+  const [inspectingCost, setInspectingCost] = useState<CostRow | null>(null);
 
   // レシート関連
   const [ocrBusyId, setOcrBusyId] = useState<string | null>(null);
@@ -1001,7 +1007,16 @@ export default function CostsPanel({
           return (
             <div
               key={c.id}
-              className={`liquid-glass rounded-2xl p-3.5 space-y-2 ${
+              onClick={() => setInspectingCost(raw)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setInspectingCost(raw);
+                }
+              }}
+              className={`liquid-glass rounded-2xl p-3.5 space-y-2 cursor-pointer hover:bg-white/75 transition ${
                 personalExceeds
                   ? "ring-1 ring-[#b84242]/45"
                   : hasMismatch
@@ -1065,7 +1080,21 @@ export default function CostsPanel({
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     type="button"
-                    onClick={() => startEdit(raw)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInspectingCost(raw);
+                    }}
+                    className="p-1.5 rounded-lg text-slate-500 hover:bg-white/80"
+                    title="内容を確認"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startEdit(raw);
+                    }}
                     className="p-1.5 rounded-lg text-slate-500 hover:bg-white/80"
                     title="編集"
                   >
@@ -1073,7 +1102,8 @@ export default function CostsPanel({
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (window.confirm(`費用「${c.title}」を削除しますか？`)) void onDelete(c.id);
                     }}
                     className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
@@ -1087,7 +1117,10 @@ export default function CostsPanel({
               {personalExceeds && (
                 <button
                   type="button"
-                  onClick={() => startEdit(raw)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startEdit(raw);
+                  }}
                   className="w-full text-left flex items-start gap-1.5 text-[11px] font-bold text-[#b84242] bg-[#fdf3f3] border border-[#b84242]/30 px-2.5 py-1.5 rounded-xl hover:opacity-90"
                 >
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
@@ -1100,7 +1133,10 @@ export default function CostsPanel({
               {!personalExceeds && hasMismatch && itemSummary && (
                 <button
                   type="button"
-                  onClick={() => startEdit(raw)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startEdit(raw);
+                  }}
                   className="w-full text-left flex items-start gap-1.5 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-xl hover:opacity-90"
                 >
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
@@ -1113,6 +1149,22 @@ export default function CostsPanel({
           );
         })}
       </div>
+
+      {/* 読み取り専用の内容確認モーダル */}
+      {inspectingCost && (
+        <CostInspectModal
+          cost={inspectingCost}
+          participants={participants}
+          days={days}
+          spots={spots}
+          onClose={() => setInspectingCost(null)}
+          onEdit={() => {
+            const target = inspectingCost;
+            setInspectingCost(null);
+            startEdit(target);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1203,5 +1255,284 @@ function SettlementCard({
         </ul>
       )}
     </div>
+  );
+}
+
+function CostInspectModal({
+  cost: raw,
+  participants,
+  days,
+  spots,
+  onClose,
+  onEdit,
+}: {
+  cost: CostRow;
+  participants: ParticipantRow[];
+  days: DayRow[];
+  spots: SpotRow[];
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null);
+  const c = normalizeCostBreakdown(raw, participants);
+  const items = c.line_items ?? [];
+  const receipts = c.receipts ?? [];
+  const itemSummary = items.length > 0 ? summarizeLineItems(items, c.total_paid_amount_jpy) : null;
+  const breakdownSum = c.individual_breakdown.reduce((a, b) => a + b.amount_jpy, 0);
+  const shared = c.total_paid_amount_jpy - breakdownSum;
+  const personalExceeds = breakdownSum > c.total_paid_amount_jpy;
+  const hasMismatch = Boolean(itemSummary?.largeMismatch);
+  const catLabel = COST_CATEGORIES.find((x) => x.value === c.category)?.label ?? c.category;
+  const dayLabel = days.find((d) => d.day_index === c.related_day_index)?.label;
+  const spotLabel = spots.find((s) => s.id === c.related_spot_id)?.name;
+  const singleCostSettlement = computeSettlement([{ ...c, is_settled: false }], participants);
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-[2000] bg-slate-900/45 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+        onClick={onClose}
+      >
+        <div
+          className="liquid-glass-strong w-full sm:max-w-lg max-h-[90dvh] rounded-t-3xl sm:rounded-3xl flex flex-col overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* ヘッダー */}
+          <div className="px-4 py-3.5 border-b border-white/70 flex items-start justify-between gap-2 shrink-0">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)]">
+                  内容確認（閲覧専用）
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/80 border border-slate-200 text-slate-600">
+                  {catLabel}
+                </span>
+              </div>
+              <h3 className="text-base font-extrabold text-slate-900 mt-1 break-words">{c.title}</h3>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-xl text-slate-500 hover:bg-white/80 shrink-0"
+              aria-label="閉じる"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* スクロール本体 */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-x-none touch-pan-y p-4 space-y-4">
+            {/* 基本情報カード */}
+            <div className="rounded-2xl bg-white/80 border border-slate-200 p-3.5 space-y-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-xs font-bold text-slate-500">実際に支払った総額</span>
+                <span className="text-xl font-mono font-extrabold text-[var(--theme-accent-text)]">
+                  {yen(c.total_paid_amount_jpy)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-700 pt-1 border-t border-slate-100">
+                <span className="text-slate-500">支払った人</span>
+                <span className="font-bold">{c.payer_full_name ?? "未設定"}</span>
+              </div>
+              {(dayLabel || spotLabel) && (
+                <div className="flex items-center gap-3 flex-wrap text-[11px] text-slate-600 pt-1 border-t border-slate-100">
+                  {dayLabel && (
+                    <span className="inline-flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-[var(--theme-accent-text)]" />
+                      {dayLabel}
+                    </span>
+                  )}
+                  {spotLabel && (
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-[var(--theme-accent-text)]" />
+                      {spotLabel}
+                    </span>
+                  )}
+                </div>
+              )}
+              {c.note && (
+                <div className="text-xs text-slate-600 bg-slate-50 rounded-xl px-2.5 py-1.5">{c.note}</div>
+              )}
+            </div>
+
+            {/* アラート */}
+            {personalExceeds && (
+              <div className="flex items-start gap-1.5 text-xs font-bold text-[#b84242] bg-[#fdf3f3] border border-[#b84242]/30 px-3 py-2 rounded-2xl">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
+                <span>
+                  個人負担の合計（{yen(breakdownSum)}）が支払総額（{yen(c.total_paid_amount_jpy)}）を超えています。
+                </span>
+              </div>
+            )}
+            {!personalExceeds && hasMismatch && itemSummary && (
+              <div className="flex items-start gap-1.5 text-xs text-amber-900 bg-amber-50 border border-amber-200 px-3 py-2 rounded-2xl">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
+                <span>
+                  品目の合計（{yen(itemSummary.itemsTotal)}）と総額の差が {yen(Math.abs(itemSummary.remainder))} あります。読み取り漏れや誤読の可能性があります。
+                </span>
+              </div>
+            )}
+
+            {/* レシート画像 */}
+            {receipts.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                  <Receipt className="w-4 h-4 text-[var(--theme-accent-text)]" />
+                  <span>添付レシート（{receipts.length}枚・タップで拡大）</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {receipts.map((rc) => (
+                    <button
+                      key={rc.id}
+                      type="button"
+                      onClick={() => setZoomUrl(rc.url)}
+                      className="group relative rounded-2xl overflow-hidden border border-slate-200 bg-white text-left"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={rc.url}
+                        alt="添付レシート"
+                        className="w-full max-h-72 object-contain bg-slate-50"
+                      />
+                      <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-black/60 text-white text-[10px] font-bold">
+                        <ZoomIn className="w-3 h-3" />
+                        拡大
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 品目ごとの内訳表 */}
+            {items.length > 0 ? (
+              <div className="space-y-2">
+                <div className="text-xs font-extrabold text-slate-800">品目ごとの内訳（{items.length}件）</div>
+                <div className="rounded-2xl bg-white/80 border border-slate-200 divide-y divide-slate-100 overflow-hidden">
+                  {items.map((it) => {
+                    const who = getLineItemAssignees(it);
+                    return (
+                      <div key={it.id} className="px-3 py-2 flex items-center justify-between gap-2 text-xs">
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-900 break-words">
+                            {it.name || "（品目名なし）"}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {who.length === 0 ? "全員で割勘" : `負担: ${who.join("・")}`}
+                          </div>
+                        </div>
+                        <div className="font-mono font-bold text-slate-800 shrink-0">{yen(it.amount_jpy)}</div>
+                      </div>
+                    );
+                  })}
+                  {itemSummary && itemSummary.remainder !== 0 && (
+                    <div className="px-3 py-2 flex items-center justify-between gap-2 text-xs bg-slate-50/80">
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-600">残額（税・端数など）</div>
+                        <div className="text-[11px] text-slate-500">自動で全員で割勘</div>
+                      </div>
+                      <div className="font-mono font-bold text-slate-700 shrink-0">
+                        {yen(itemSummary.remainder)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {itemSummary && (
+                  <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                    <SummaryCell label="個人負担の合計" value={yen(itemSummary.personalTotal)} strong />
+                    <SummaryCell label="割勘対象の合計" value={yen(itemSummary.sharedTotal)} strong />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl bg-white/80 border border-slate-200 p-3 space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">割勘対象</span>
+                  <span className="font-mono font-bold">{yen(shared)}</span>
+                </div>
+                {c.individual_breakdown.length > 0 && (
+                  <div className="pt-1 border-t border-slate-100 space-y-1">
+                    <div className="text-[11px] font-bold text-slate-500">個人別内訳</div>
+                    {c.individual_breakdown.map((b, i) => (
+                      <div key={i} className="flex justify-between">
+                        <span>
+                          {b.consumer_full_name}
+                          {b.note ? `（${b.note}）` : ""}
+                        </span>
+                        <span className="font-mono font-bold">{yen(b.amount_jpy)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* この費用での参加者ごとの実質負担額 */}
+            {singleCostSettlement.balances.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="text-xs font-extrabold text-slate-800">この費用の1人あたりの負担額</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {singleCostSettlement.balances.map((b) => (
+                    <div
+                      key={b.participant_id}
+                      className="rounded-xl bg-white/80 border border-slate-200 px-2.5 py-1.5 flex items-center justify-between text-xs"
+                    >
+                      <span className="font-bold text-slate-700 truncate">{b.nickname || b.full_name}</span>
+                      <span className="font-mono font-extrabold text-[var(--theme-accent-text)] shrink-0">
+                        {yen(b.owed)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* フッター */}
+          <div className="px-4 py-3 border-t border-white/70 flex items-center justify-end gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50"
+            >
+              閉じる
+            </button>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex items-center gap-1 px-4 py-2 rounded-xl liquid-btn-primary text-white text-xs font-bold"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              内容を修正する
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* レシート全画面拡大ライトボックス */}
+      {zoomUrl && (
+        <div
+          className="fixed inset-0 z-[2100] bg-black/85 flex items-center justify-center p-3"
+          onClick={() => setZoomUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setZoomUrl(null)}
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/20 text-white hover:bg-white/30"
+            aria-label="拡大を閉じる"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={zoomUrl}
+            alt="レシート拡大"
+            className="max-w-full max-h-[90dvh] object-contain rounded-xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
   );
 }
