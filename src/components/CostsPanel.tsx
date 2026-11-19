@@ -149,6 +149,19 @@ export default function CostsPanel({
     [costs, participants],
   );
 
+  // 登録済み費用のうち、金額超過または品目合計と総額が大きくずれている件数
+  const mismatchedCostCount = useMemo(
+    () =>
+      costs.filter((raw) => {
+        const c = normalizeCostBreakdown(raw, participants);
+        const sum = c.individual_breakdown.reduce((a, b) => a + b.amount_jpy, 0);
+        if (sum > c.total_paid_amount_jpy) return true;
+        const items = c.line_items ?? [];
+        return items.length > 0 && summarizeLineItems(items, c.total_paid_amount_jpy).largeMismatch;
+      }).length,
+    [costs, participants],
+  );
+
   function resetForm() {
     setDraft(emptyDraft(participants));
     setIsFullSplit(true);
@@ -410,7 +423,11 @@ export default function CostsPanel({
   return (
     <div className="space-y-4">
       {/* 精算サマリー */}
-      <SettlementCard settlement={settlement} participantsCount={participants.length} />
+      <SettlementCard
+        settlement={settlement}
+        participantsCount={participants.length}
+        mismatchedCostCount={mismatchedCostCount}
+      />
 
       {/* 統合入力フォーム（①名目 → ②完全割勘/個別会計 → ③レシート貼付 → ④総額・品目調整 → ⑤その他情報） */}
       <form onSubmit={handleSubmit} className="liquid-glass rounded-3xl p-4 space-y-4">
@@ -978,69 +995,120 @@ export default function CostsPanel({
           const sum = c.individual_breakdown.reduce((a, b) => a + b.amount_jpy, 0);
           const shared = c.total_paid_amount_jpy - sum;
           const items = c.line_items ?? [];
+          const itemSummary = items.length > 0 ? summarizeLineItems(items, c.total_paid_amount_jpy) : null;
+          const personalExceeds = sum > c.total_paid_amount_jpy;
+          const hasMismatch = Boolean(itemSummary?.largeMismatch);
           return (
-            <div key={c.id} className="liquid-glass rounded-2xl p-3.5 flex items-start justify-between gap-2">
-              <div className="space-y-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-extrabold text-slate-900">{c.title}</span>
-                  <span className="text-sm font-mono font-extrabold text-[var(--theme-accent-text)]">
-                    ¥{c.total_paid_amount_jpy.toLocaleString("ja-JP")}
-                  </span>
-                  <span className="text-xs text-slate-500">
-                    支払: <strong>{c.payer_full_name ?? "未設定"}</strong>
-                  </span>
-                  {items.length > 0 && (
-                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)]">
-                      個別・品目別 {items.length}件
+            <div
+              key={c.id}
+              className={`liquid-glass rounded-2xl p-3.5 space-y-2 ${
+                personalExceeds
+                  ? "ring-1 ring-[#b84242]/45"
+                  : hasMismatch
+                    ? "ring-1 ring-amber-400/60"
+                    : ""
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-extrabold text-slate-900">{c.title}</span>
+                    <span className="text-sm font-mono font-extrabold text-[var(--theme-accent-text)]">
+                      ¥{c.total_paid_amount_jpy.toLocaleString("ja-JP")}
                     </span>
-                  )}
-                  {(c.receipts?.length ?? 0) > 0 && (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-500">
-                      <Receipt className="w-3 h-3" />
-                      {c.receipts!.length}
+                    <span className="text-xs text-slate-500">
+                      支払: <strong>{c.payer_full_name ?? "未設定"}</strong>
                     </span>
-                  )}
+                    {items.length > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)]">
+                        個別・品目別 {items.length}件
+                      </span>
+                    )}
+                    {(c.receipts?.length ?? 0) > 0 && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-500">
+                        <Receipt className="w-3 h-3" />
+                        {c.receipts!.length}
+                      </span>
+                    )}
+                    {personalExceeds ? (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-[#fdf3f3] text-[#b84242] border border-[#b84242]/30">
+                        <AlertTriangle className="w-3 h-3" />
+                        総額超過
+                      </span>
+                    ) : hasMismatch ? (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                        <AlertTriangle className="w-3 h-3" />
+                        計算不一致
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="text-xs text-slate-600">
+                    割勘対象: ¥{shared.toLocaleString("ja-JP")}
+                    {c.individual_breakdown.length > 0 && (
+                      <span className="ml-2 text-slate-500">
+                        （個別:{" "}
+                        {c.individual_breakdown
+                          .map(
+                            (b) =>
+                              `${b.consumer_full_name} ¥${b.amount_jpy.toLocaleString("ja-JP")}${
+                                b.note ? ` [${b.note}]` : ""
+                              }`,
+                          )
+                          .join(" / ")}
+                        ）
+                      </span>
+                    )}
+                  </div>
+                  {c.note && <div className="text-[11px] text-slate-400">{c.note}</div>}
                 </div>
-                <div className="text-xs text-slate-600">
-                  割勘対象: ¥{shared.toLocaleString("ja-JP")}
-                  {c.individual_breakdown.length > 0 && (
-                    <span className="ml-2 text-slate-500">
-                      （個別:{" "}
-                      {c.individual_breakdown
-                        .map(
-                          (b) =>
-                            `${b.consumer_full_name} ¥${b.amount_jpy.toLocaleString("ja-JP")}${
-                              b.note ? ` [${b.note}]` : ""
-                            }`,
-                        )
-                        .join(" / ")}
-                      ）
-                    </span>
-                  )}
+
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => startEdit(raw)}
+                    className="p-1.5 rounded-lg text-slate-500 hover:bg-white/80"
+                    title="編集"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`費用「${c.title}」を削除しますか？`)) void onDelete(c.id);
+                    }}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
+                    title="削除"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                {c.note && <div className="text-[11px] text-slate-400">{c.note}</div>}
               </div>
 
-              <div className="flex items-center gap-1 shrink-0">
+              {personalExceeds && (
                 <button
                   type="button"
                   onClick={() => startEdit(raw)}
-                  className="p-1.5 rounded-lg text-slate-500 hover:bg-white/80"
-                  title="編集"
+                  className="w-full text-left flex items-start gap-1.5 text-[11px] font-bold text-[#b84242] bg-[#fdf3f3] border border-[#b84242]/30 px-2.5 py-1.5 rounded-xl hover:opacity-90"
                 >
-                  <Edit3 className="w-4 h-4" />
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                  <span>
+                    個人負担の合計（{yen(sum)}）が支払総額（{yen(c.total_paid_amount_jpy)}）を超えています。タップして修正してください。
+                  </span>
                 </button>
+              )}
+
+              {!personalExceeds && hasMismatch && itemSummary && (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.confirm(`費用「${c.title}」を削除しますか？`)) void onDelete(c.id);
-                  }}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
-                  title="削除"
+                  onClick={() => startEdit(raw)}
+                  className="w-full text-left flex items-start gap-1.5 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-xl hover:opacity-90"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                  <span>
+                    品目の合計（{yen(itemSummary.itemsTotal)}）と総額の差が {yen(Math.abs(itemSummary.remainder))} あります（読み取り漏れや誤読の可能性・タップして修正）。
+                  </span>
                 </button>
-              </div>
+              )}
             </div>
           );
         })}
@@ -1063,9 +1131,11 @@ function SummaryCell({ label, value, strong }: { label: string; value: string; s
 function SettlementCard({
   settlement,
   participantsCount,
+  mismatchedCostCount,
 }: {
   settlement: ReturnType<typeof computeSettlement>;
   participantsCount: number;
+  mismatchedCostCount: number;
 }) {
   if (participantsCount === 0) {
     return (
@@ -1117,6 +1187,14 @@ function SettlementCard({
           </div>
         ))}
       </div>
+      {mismatchedCostCount > 0 && (
+        <div className="flex items-start gap-1.5 text-[11px] font-bold text-amber-900 bg-amber-50 border border-amber-200 px-2.5 py-1.5 rounded-xl">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />
+          <span>
+            品目合計と総額が一致しない（または総額を超過している）費用が {mismatchedCostCount} 件あります。下の登録済み費用一覧を確認してください。
+          </span>
+        </div>
+      )}
       {settlement.warnings.length > 0 && (
         <ul className="text-[10px] text-amber-800 space-y-0.5">
           {settlement.warnings.map((w, i) => (
