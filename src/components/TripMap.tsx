@@ -196,13 +196,13 @@ export default function TripMap({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="場所名を検索して位置関係を確認..."
-              className="w-full pl-9 pr-3 py-2 text-sm rounded-xl bg-white/95 text-neutral-900 shadow-md border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-xl bg-white/95 text-neutral-900 shadow-md border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent-border)]"
             />
           </div>
           <button
             type="submit"
             disabled={searching}
-            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-blue-600 text-white shadow-md hover:bg-blue-700 disabled:opacity-50"
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold liquid-btn-primary text-white disabled:opacity-50 shrink-0"
           >
             {searching ? "..." : "検索"}
           </button>
@@ -226,9 +226,9 @@ export default function TripMap({
                   setFlyTarget({ lat: r.lat, lng: r.lng });
                   setResults([]);
                 }}
-                className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-start gap-2"
+                className="w-full text-left px-3 py-2 hover:bg-[var(--theme-accent-soft)] flex items-start gap-2"
               >
-                <MapPin className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <MapPin className="w-4 h-4 text-[var(--theme-accent-text)] shrink-0 mt-0.5" />
                 <div className="min-w-0">
                   <div className="text-xs font-semibold text-neutral-900 truncate">{r.name}</div>
                   <div className="text-[11px] text-neutral-500 truncate">{r.address}</div>
@@ -260,7 +260,7 @@ export default function TripMap({
                 onPickPlace(pending);
                 setPending(null);
               }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg liquid-btn-primary text-white text-xs font-semibold"
             >
               <Plus className="w-3.5 h-3.5" />
               しおりに追加
@@ -352,7 +352,7 @@ export default function TripMap({
                     {idx + 1}. {s.name}
                   </div>
                   {s.category === "lodging" && (s.check_in || s.check_out) ? (
-                    <div className="flex items-center gap-1 text-[11px] font-mono font-bold text-purple-800">
+                    <div className="flex items-center gap-1 text-[11px] font-mono font-bold text-[var(--theme-accent-text)]">
                       <Clock className="w-3 h-3 shrink-0" />
                       <span>
                         IN {s.check_in ? toTokyoHHMM(s.check_in) : "未定"} / OUT{" "}
@@ -360,7 +360,7 @@ export default function TripMap({
                       </span>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1 text-[11px] font-mono font-bold text-blue-700">
+                    <div className="flex items-center gap-1 text-[11px] font-mono font-bold text-[var(--theme-accent-text)]">
                       <Clock className="w-3 h-3 shrink-0" />
                       <span>
                         {timing?.arrival && timing?.departure
@@ -370,9 +370,9 @@ export default function TripMap({
                     </div>
                   )}
                   {nextTiming?.must_leave_prev_by && nextSpot && (
-                    <div className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-1 text-[11px] font-bold text-emerald-900">
-                      🕒 {nextTiming.must_leave_prev_by} までにここを出発
-                      <div className="text-[10px] font-normal text-emerald-700 truncate">
+                    <div className="rounded-md bg-[var(--theme-accent-soft)] border border-[var(--theme-accent-border)] px-2 py-1 text-[11px] font-bold text-[var(--theme-accent-text)]">
+                      {nextTiming.must_leave_prev_by} までにここを出発
+                      <div className="text-[10px] font-normal text-slate-600 truncate">
                         （次: {nextSpot.name}）
                       </div>
                     </div>

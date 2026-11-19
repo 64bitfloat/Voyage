@@ -1641,97 +1641,75 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                   画面切り替え
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMainTab("itinerary");
-                    setShowSidebar(false);
-                  }}
-                  className={`w-full px-3 py-2.5 rounded-2xl border text-left flex items-center gap-3 transition ${
-                    mainTab === "itinerary" || mainTab === "map" || mainTab === "pool"
-                      ? "border-blue-300 bg-blue-50/80"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
-                    <ListOrdered className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900">旅程・マップ・候補</div>
-                    <div className="text-[10px] text-slate-500">
-                      スケジュール ({doc.spots.length}件)
+                {(
+                  [
+                    {
+                      active: mainTab === "itinerary" || mainTab === "map" || mainTab === "pool",
+                      onClick: () => {
+                        setMainTab("itinerary");
+                        setShowSidebar(false);
+                      },
+                      Icon: ListOrdered,
+                      title: "旅程・マップ・候補",
+                      sub: `スケジュール (${doc.spots.length}件)`,
+                    },
+                    {
+                      active: mainTab === "costs",
+                      onClick: () => {
+                        setMainTab("costs");
+                        setShowSidebar(false);
+                      },
+                      Icon: Wallet,
+                      title: `費用・精算 (${doc.costs.length})`,
+                      sub: "支払総額・個人別内訳の登録",
+                    },
+                    {
+                      active: mainTab === "prep",
+                      onClick: () => {
+                        setMainTab("prep");
+                        setShowSidebar(false);
+                      },
+                      Icon: Backpack,
+                      title: `準備（持ち物・料理）(${doc.belongings.length + doc.dishes.length})`,
+                      sub: "持ち物チェック・料理と材料",
+                    },
+                    {
+                      active: mainTab === "members",
+                      onClick: () => {
+                        setMainTab("members");
+                        setShowSidebar(false);
+                      },
+                      Icon: Users,
+                      title: `参加者・全体メモ (${doc.participants.length})`,
+                      sub: "メンバー本名・ニックネーム",
+                    },
+                  ] as const
+                ).map(({ active, onClick, Icon, title, sub }) => (
+                  <button
+                    key={title}
+                    type="button"
+                    onClick={onClick}
+                    className={`w-full px-3 py-2.5 rounded-2xl border text-left flex items-center gap-3 transition ${
+                      active
+                        ? "border-[var(--theme-accent)] bg-[var(--theme-accent-soft)]"
+                        : "border-slate-200/80 bg-white/80 hover:bg-white"
+                    }`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                        active
+                          ? "bg-[var(--theme-accent)] text-white"
+                          : "bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)]"
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
                     </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMainTab("costs");
-                    setShowSidebar(false);
-                  }}
-                  className={`w-full px-3 py-2.5 rounded-2xl border text-left flex items-center gap-3 transition ${
-                    mainTab === "costs"
-                      ? "border-blue-300 bg-blue-50/80"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                    <Wallet className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900">
-                      費用・精算 ({doc.costs.length})
+                    <div className="min-w-0">
+                      <div className="text-xs font-extrabold text-slate-900">{title}</div>
+                      <div className="text-[10px] text-slate-500">{sub}</div>
                     </div>
-                    <div className="text-[10px] text-slate-500">支払総額・個人別内訳の登録</div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMainTab("prep");
-                    setShowSidebar(false);
-                  }}
-                  className={`w-full px-3 py-2.5 rounded-2xl border text-left flex items-center gap-3 transition ${
-                    mainTab === "prep"
-                      ? "border-blue-300 bg-blue-50/80"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="w-8 h-8 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0">
-                    <Backpack className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900">
-                      準備（持ち物・料理）({doc.belongings.length + doc.dishes.length})
-                    </div>
-                    <div className="text-[10px] text-slate-500">持ち物チェック・料理と材料</div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMainTab("members");
-                    setShowSidebar(false);
-                  }}
-                  className={`w-full px-3 py-2.5 rounded-2xl border text-left flex items-center gap-3 transition ${
-                    mainTab === "members"
-                      ? "border-blue-300 bg-blue-50/80"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="w-8 h-8 rounded-xl bg-slate-800 text-white flex items-center justify-center shrink-0">
-                    <Users className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900">
-                      参加者・全体メモ ({doc.participants.length})
-                    </div>
-                    <div className="text-[10px] text-slate-500">メンバー本名・ニックネーム</div>
-                  </div>
-                </button>
+                  </button>
+                ))}
               </div>
 
               {/* 2. テーマカラー設定（普段はサイドバー内に格納） */}
@@ -1739,7 +1717,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                 <div className="text-[10px] font-extrabold text-slate-400 px-1">
                   テーマカラー
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-2 gap-1.5">
                   {THEME_PRESETS.map((preset) => {
                     const active = theme === preset.id;
                     return (
@@ -1747,7 +1725,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                         key={preset.id}
                         type="button"
                         onClick={() => handleChangeTheme(preset.id)}
-                        className={`px-2 py-2 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition ${
+                        className={`px-2.5 py-2 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition ${
                           active
                             ? "border-[var(--theme-accent)] bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)]"
                             : "border-slate-200 bg-white/80 text-slate-700 hover:bg-slate-50"
@@ -1757,7 +1735,7 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                           className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/10"
                           style={{ backgroundColor: preset.color }}
                         />
-                        <span className="truncate">{preset.label}</span>
+                        <span>{preset.label}</span>
                       </button>
                     );
                   })}
@@ -1776,9 +1754,9 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                     setShowSidebar(false);
                     setShowShareModal(true);
                   }}
-                  className="w-full px-3 py-2.5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-blue-50/70 text-left flex items-center gap-3 transition"
+                  className="w-full px-3 py-2.5 rounded-2xl border border-slate-200/80 bg-white/80 hover:bg-[var(--theme-accent-soft)] text-left flex items-center gap-3 transition"
                 >
-                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-xl bg-[var(--theme-accent-soft)] text-[var(--theme-accent-text)] border border-[var(--theme-accent-border)] flex items-center justify-center shrink-0">
                     <Share2 className="w-4 h-4" />
                   </div>
                   <div>
@@ -1793,16 +1771,16 @@ export default function TripWorkspace({ initialDoc }: TripWorkspaceProps) {
                     setShowSidebar(false);
                     setShowExportModal(true);
                   }}
-                  className="w-full px-3 py-2.5 rounded-2xl border border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100/70 text-left flex items-center gap-3 transition"
+                  className="w-full px-3 py-2.5 rounded-2xl border border-[var(--theme-accent-border)] bg-[var(--theme-accent-soft)] hover:opacity-90 text-left flex items-center gap-3 transition"
                 >
-                  <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-xl bg-[var(--theme-accent)] text-white flex items-center justify-center shrink-0">
                     <Sparkles className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-xs font-extrabold text-indigo-950">
+                    <div className="text-xs font-extrabold text-slate-900">
                       Muse連携用データを出力
                     </div>
-                    <div className="text-[10px] text-indigo-700">
+                    <div className="text-[10px] text-[var(--theme-accent-text)]">
                       JSON・Markdown・サマリーURL
                     </div>
                   </div>
